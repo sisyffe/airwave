@@ -70,7 +70,7 @@ final class AudioPlayer: ObservableObject {
             let resolved = try await StreamResolver.resolve(urlString)
             guard gen == generation else { return } // user switched meanwhile
             if title == nil, let t = resolved.title { self.title = t }
-            // yt-dlp tells us which headers the CDN expects; without them YouTube often refuses.
+            // Apply stream-specific headers when supplied by the resolver.
             var opts: [String: Any] = [:]
             if !resolved.headers.isEmpty { opts["AVURLAssetHTTPHeaderFieldsKey"] = resolved.headers }
             let asset = AVURLAsset(url: resolved.streamURL, options: opts)

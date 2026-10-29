@@ -44,6 +44,8 @@ struct FavoritesList: View {
                                                                      dropIndex: $dropIndex))
                     }
                 }
+                // Reserve room for the overlay scrollbar so it never covers the menu.
+                .padding(.trailing, 16)
             }
         }
     }
@@ -100,6 +102,7 @@ private struct FavoriteRow: View {
             Spacer(minLength: 0)
             if isCurrent {
                 Image(systemName: "speaker.wave.2.fill").font(.caption2).foregroundStyle(.tint)
+                    .help("Currently playing")
             }
             Menu {
                 Button("Play", action: onPlay)
@@ -113,6 +116,8 @@ private struct FavoriteRow: View {
             .menuIndicator(.hidden)
             .controlSize(.small)
             .fixedSize()
+            .frame(width: 20, height: 22)
+            .help("More options for \(fav.name)")
         }
         .padding(.vertical, 3)
         .help(fav.url)

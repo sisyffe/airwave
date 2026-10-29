@@ -31,6 +31,9 @@ struct AirwaveApp: App {
         .defaultSize(width: 260, height: 460)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Airwave") { appDelegate.showAbout() }
+            }
             CommandMenu("Playback") {
                 Button(player.isPlaying ? "Pause" : "Play") { player.toggle() }
                     .keyboardShortcut(.space, modifiers: [])
@@ -52,10 +55,30 @@ struct AirwaveApp: App {
     }
 }
 
-/// Regular app behaviour: Airwave quits when its last window is closed,
-/// even if audio is still playing.
+/// Closing the last window quits by default; the user can opt into macOS keep-running behavior.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        Prefs.shouldQuitAfterLastWindowClosed()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag, let window = sender.windows.first(where: { $0.title == "Airwave" && $0.canBecomeMain }) {
+            window.makeKeyAndOrderFront(nil)
+        }
+        return true
+    }
+
+    @MainActor
+    func showAbout() {
+        let credits = NSAttributedString(
+            string: "A lightweight macOS audio player for YouTube livestreams and direct audio streams. Save favorites and control playback with macOS media controls.\n\nVibe coded with Lovable and Claude.",
+            attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
+        )
+        NSApplication.shared.orderFrontStandardAboutPanel(options: [
+            .applicationName: "Airwave",
+            .applicationVersion: "1.0.2",
+            .version: "1.0.2",
+            .credits: credits
+        ])
     }
 }

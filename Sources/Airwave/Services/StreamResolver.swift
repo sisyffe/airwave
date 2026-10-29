@@ -1,11 +1,9 @@
 import Foundation
 import AppKit
-#if YOUTUBEKIT
 import YouTubeKit
-#endif
 
 /// Turns a page URL into a playable audio stream URL (+ title, thumbnail, HTTP headers).
-/// Direct audio / HLS links are used as-is. Backend chosen at build time (see make-app.sh).
+/// Direct audio / HLS links are used as-is. YouTube pages are resolved with the bundled YouTubeKit library.
 enum StreamResolver {
     struct Resolved {
         let streamURL: URL
@@ -15,12 +13,11 @@ enum StreamResolver {
     }
 
     enum ResolveError: LocalizedError {
-        case invalidURL, ytdlpMissing, unsupported, failed(String)
+        case invalidURL, unsupported, failed(String)
         var errorDescription: String? {
             switch self {
             case .invalidURL: return "That doesn't look like a valid link."
-            case .ytdlpMissing: return "yt-dlp was not found. Install it with `brew install yt-dlp` or set its path in Preferences."
-            case .unsupported: return "This build (YouTubeKit) only plays YouTube and direct audio links."
+            case .unsupported: return "Airwave uses YouTubeKit: paste a YouTube URL or a direct audio/HLS stream link. Other website pages are not supported."
             case .failed(let msg): return "Couldn't get audio from this link.\n\(msg)"
             }
         }
@@ -36,11 +33,7 @@ enum StreamResolver {
         if directExtensions.contains(url.pathExtension.lowercased()) {
             return Resolved(streamURL: url, title: nil)
         }
-        #if YOUTUBEKIT
         return try await resolveYouTubeKit(url)
-        #else
-        return try await runYtDlp(url: trimmed)
-        #endif
     }
 
     // MARK: Thumbnails
@@ -77,60 +70,11 @@ enum StreamResolver {
         return URL(string: String(html[r]).replacingOccurrences(of: "&amp;", with: "&"), relativeTo: page)?.absoluteURL
     }
 
-    // MARK: yt-dlp backend
+    // MARK: YouTubeKit
 
-    static func ytdlpPath() -> String? {
-        let custom = UserDefaults.standard.string(forKey: Prefs.ytdlpPath) ?? ""
-        let bundled = Bundle.main.url(forResource: "yt-dlp", withExtension: nil)?.path ?? ""
-        let candidates = [custom, bundled, "/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp"]
-        return candidates.first { !$0.isEmpty && FileManager.default.isExecutableFile(atPath: $0) }
-    }
-
-    private static func runYtDlp(url: String) async throws -> Resolved {
-        guard let bin = ytdlpPath() else { throw ResolveError.ytdlpMissing }
-        return try await withCheckedThrowingContinuation { cont in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: bin)
-                // AVPlayer can't open WebM/Opus or DASH (the cause of "Cannot Open").
-                // Prefer AAC/M4A, then HLS (live streams), then anything single-file.
-                let format = "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/91/92/93/best[protocol^=m3u8]/bestaudio[protocol^=http][ext!=webm]/best[ext=mp4]/best"
-                p.arguments = ["-f", format, "--no-playlist", "--no-warnings",
-                               "-O", "%(title)s", "-O", "%(thumbnail)s",
-                               "-O", "%(http_headers)j", "-O", "%(url)s", url]
-                let out = Pipe(), err = Pipe()
-                p.standardOutput = out; p.standardError = err
-                do { try p.run() } catch {
-                    cont.resume(throwing: ResolveError.failed(error.localizedDescription)); return
-                }
-                let outData = out.fileHandleForReading.readDataToEndOfFile()
-                let errData = err.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-                let lines = String(decoding: outData, as: UTF8.self)
-                    .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-                guard p.terminationStatus == 0, lines.count >= 4,
-                      let stream = URL(string: lines[3].trimmingCharacters(in: .whitespaces)),
-                      stream.scheme != nil else {
-                    let msg = String(decoding: errData, as: UTF8.self)
-                        .split(separator: "\n").last.map(String.init) ?? "Unknown error"
-                    cont.resume(throwing: ResolveError.failed(msg)); return
-                }
-                var headers: [String: String] = [:]
-                if let d = lines[2].data(using: .utf8),
-                   let h = try? JSONSerialization.jsonObject(with: d) as? [String: String] { headers = h }
-                let thumb = lines[1] == "NA" ? nil : URL(string: lines[1])
-                cont.resume(returning: Resolved(streamURL: stream, title: lines[0] == "NA" ? nil : lines[0],
-                                                thumbnailURL: thumb, headers: headers))
-            }
-        }
-    }
-
-    // MARK: YouTubeKit backend
-
-    #if YOUTUBEKIT
     private static func resolveYouTubeKit(_ url: URL) async throws -> Resolved {
         let host = url.host?.lowercased() ?? ""
-        guard host.contains("youtube.com") || host.contains("youtu.be") else { throw ResolveError.unsupported }
+        guard host == "youtube.com" || host.hasSuffix(".youtube.com") || host == "youtu.be" else { throw ResolveError.unsupported }
         do {
             let yt = YouTube(url: url)
             let meta = try? await yt.metadata
@@ -151,7 +95,6 @@ enum StreamResolver {
             throw ResolveError.failed(error.localizedDescription)
         }
     }
-    #endif
 }
 
 extension NSImage {

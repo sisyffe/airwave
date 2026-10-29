@@ -6,7 +6,6 @@ struct PreferencesView: View {
         TabView {
             GeneralPrefs().tabItem { Label("General", systemImage: "gearshape") }
             FavoritesPrefs().tabItem { Label("Favorites", systemImage: "star") }
-            AdvancedPrefs().tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
         }
         .frame(width: 460, height: 300)
     }
@@ -14,12 +13,15 @@ struct PreferencesView: View {
 
 private struct GeneralPrefs: View {
     @AppStorage(Prefs.hotstart) private var hotstart = true
+    @AppStorage(Prefs.quitOnLastWindowClosed) private var quitOnLastWindowClosed = Prefs.defaultQuitOnLastWindowClosed
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
         Form {
             Toggle("Hotstart: play automatically when Airwave opens", isOn: $hotstart)
                 .help("Resumes the last played source")
+            Toggle("Quit when the last window closes", isOn: $quitOnLastWindowClosed)
+                .help("On: closing the last window quits Airwave. Off: Airwave stays running and audio continues, like a standard macOS app. Use ⌘Q to quit.")
             Toggle("Open Airwave at login", isOn: $launchAtLogin)
                 .onChange(of: launchAtLogin) { _, on in
                     do { on ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() }
@@ -65,6 +67,7 @@ private struct FavoritesPrefs: View {
                 if let sel = selected {
                     TextField("Name", text: sel.name)
                     TextField("Link", text: sel.url)
+                        .help("YouTube URL or direct audio/HLS stream link")
                 } else {
                     TextField("Name", text: .constant(""), prompt: Text("Select a favorite above"))
                         .disabled(true)
@@ -78,33 +81,12 @@ private struct FavoritesPrefs: View {
             HStack {
                 TextField("Name", text: $name)
                 TextField("Link", text: $url)
+                    .help("YouTube URL or direct audio/HLS stream link")
                 Button("Add") { favorites.add(name: name, url: url); name = ""; url = "" }
                     .disabled(url.isEmpty)
+                    .help("Add this link to favorites")
             }
         }
         .padding()
-    }
-}
-
-private struct AdvancedPrefs: View {
-    @AppStorage(Prefs.ytdlpPath) private var ytdlpPath = ""
-
-    var body: some View {
-        Form {
-            LabeledContent("Backend", value: Backend.name)
-            #if !YOUTUBEKIT
-            TextField("yt-dlp path", text: $ytdlpPath, prompt: Text("Auto-detect"))
-            LabeledContent("Detected") {
-                Text(StreamResolver.ytdlpPath() ?? "Not found — brew install yt-dlp")
-                    .foregroundStyle(StreamResolver.ytdlpPath() == nil ? .red : .secondary)
-            }
-            Text("yt-dlp turns YouTube and other website links into a playable audio stream. Direct audio links (mp3, aac, m3u8…) play without it.")
-                .font(.caption).foregroundStyle(.secondary)
-            #else
-            Text("Built with YouTubeKit: YouTube and direct audio links only. Rebuild with ./make-app.sh --backend ytdlp for other sites.")
-                .font(.caption).foregroundStyle(.secondary)
-            #endif
-        }
-        .formStyle(.grouped)
     }
 }

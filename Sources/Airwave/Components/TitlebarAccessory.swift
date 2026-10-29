@@ -31,11 +31,11 @@ struct TitlebarButtons: View {
         HStack(spacing: 8) {
             switch conn.quality {
             case .good:
-                Image(systemName: "wifi").foregroundStyle(.green).help("Connection: good")
+                Image(systemName: "wifi").foregroundStyle(.green).help("Internet connection available")
             case .weak:
-                Image(systemName: "wifi.exclamationmark").foregroundStyle(.yellow).help("Connection: weak")
+                Image(systemName: "wifi.exclamationmark").foregroundStyle(.yellow).help("Internet available on a metered connection, such as a personal hotspot. This does not measure signal strength.")
             case .offline:
-                Image(systemName: "wifi.slash").foregroundStyle(.red).help("Offline")
+                Image(systemName: "wifi.slash").foregroundStyle(.red).help("No internet connection. Online streams cannot load.")
             }
             Button {
                 openSettings()
@@ -78,6 +78,8 @@ struct TitlebarAccessoryInstaller: NSViewRepresentable {
         func install(in window: NSWindow) {
             guard self.window !== window || accessory == nil else { return }
             remove()
+            // Keep the closed main window available for Dock reopening when quit is disabled.
+            window.isReleasedWhenClosed = false
 
             let hostingView = NSHostingView(rootView: TitlebarButtons(openSettings: openSettings))
             hostingView.sizingOptions = [.intrinsicContentSize]

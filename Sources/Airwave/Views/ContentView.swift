@@ -15,19 +15,20 @@ struct ContentView: View {
 
                 HStack(spacing: 4) {
                     Button(action: playLink) { Image(systemName: "play.fill") }
-                        //.controlSize(.small)
                         .keyboardShortcut(.return, modifiers: .command)
                         .disabled(link.trimmingCharacters(in: .whitespaces).isEmpty)
                         .help("Play link")
-                    TextField("YouTube or stream link…", text: $link)
+                    TextField("YouTube link", text: $link)
+                        .controlSize(.small)
+                        .help("Uses YouTubeKit. Paste a YouTube URL or a direct audio/HLS stream link; other website pages are not supported.")
                         .focused($linkFocused)
                         .textFieldStyle(.roundedBorder)
-                        .controlSize(.small)
                         .onSubmit(playLink)
                     Button(action: paste) {
                         Label("Paste", systemImage: "doc.on.clipboard")
                     }
-                    .help("Paste a link from the clipboard")
+                        .controlSize(.small)
+                        .help("Paste a link from the clipboard")
                 }
 
                 HStack {
@@ -39,6 +40,9 @@ struct ContentView: View {
             }
             .padding(EdgeInsets(top: 0, leading: 10, bottom: 10, trailing: 10))
         }
+        .contentShape(Rectangle())
+        .onTapGesture { NSApp.keyWindow?.makeFirstResponder(nil) }
+        .onExitCommand { NSApp.keyWindow?.makeFirstResponder(nil) }
         .background(TitlebarAccessoryInstaller())
         .onAppear {
             linkFocused = true
