@@ -4,6 +4,7 @@ enum Prefs {
     static let hotstart = "hotstart"
     static let lastURL = "lastURL"
     static let volume = "volume"
+    static let recentTracks = "recentTracks"
     static let quitOnLastWindowClosed = "quitOnLastWindowClosed"
     static let defaultQuitOnLastWindowClosed = true
 

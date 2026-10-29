@@ -84,6 +84,7 @@ final class AudioPlayer: ObservableObject {
             player.replaceCurrentItem(with: item)
             player.play()
             UserDefaults.standard.set(urlString, forKey: Prefs.lastURL)
+            RecentsStore.shared.record(name: self.title, url: urlString)
             updateNowPlaying()
             if knownArtwork == nil {
                 let data = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: urlString)
@@ -136,6 +137,13 @@ final class AudioPlayer: ObservableObject {
 
     func pause() { player.pause() }
     func toggle() { isPlaying ? pause() : resume() }
+
+    /// Re-resolve and reload the current source (fresh stream URL), keeping the
+    /// existing title and artwork so the UI does not flicker.
+    func refresh() {
+        guard !sourceURL.isEmpty else { return }
+        Task { await play(urlString: sourceURL, title: title, artwork: artwork) }
+    }
 
     func stop() {
         player.pause()

@@ -39,6 +39,8 @@ struct AirwaveApp: App {
                     .keyboardShortcut(.space, modifiers: [])
                 Button("Stop") { player.stop() }
                     .keyboardShortcut(".", modifiers: .command)
+                Button("Refresh") { player.refresh() }
+                    .keyboardShortcut("r", modifiers: .command)
             }
         }
 
@@ -68,6 +70,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    /// Right-click Dock menu: Play/Pause plus a submenu of the last played tracks.
+    @MainActor
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+
+        let recentsItem = NSMenuItem(title: "Recent Tracks", action: nil, keyEquivalent: "")
+        let recentsMenu = NSMenu()
+        let recents = RecentsStore.shared.items
+        if recents.isEmpty {
+            let empty = NSMenuItem(title: "No Recent Tracks", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            recentsMenu.addItem(empty)
+        } else {
+            for track in recents {
+                let item = NSMenuItem(title: track.name, action: #selector(dockPlayRecent(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = track.url
+                item.toolTip = track.url
+                recentsMenu.addItem(item)
+            }
+        }
+        recentsItem.submenu = recentsMenu
+        menu.addItem(recentsItem)
+
+        let toggle = NSMenuItem(title: AudioPlayer.shared.isPlaying ? "Pause" : "Play",
+                                action: #selector(dockToggle), keyEquivalent: "")
+        toggle.target = self
+        menu.addItem(toggle)
+
+        return menu
+    }
+
+    @objc private func dockToggle() {
+        Task { @MainActor in AudioPlayer.shared.toggle() }
+    }
+
+    @objc private func dockPlayRecent(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? String else { return }
+        let title = sender.title
+        Task { @MainActor in await AudioPlayer.shared.play(urlString: url, title: title) }
+    }
+
     @MainActor
     func showAbout() {
         let credits = NSAttributedString(
@@ -76,8 +120,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
             .applicationName: "Airwave",
-            .applicationVersion: "1.0.2",
-            .version: "1.0.2",
+            .applicationVersion: "1.0.3",
+            .version: "1.0.3",
             .credits: credits
         ])
     }

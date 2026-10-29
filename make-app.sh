@@ -2,7 +2,7 @@
 # Usage: ./make-app.sh
 set -eu
 
-VERSION=1.0.2
+VERSION=1.0.3
 
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 echo "Building Airwave $VERSION"

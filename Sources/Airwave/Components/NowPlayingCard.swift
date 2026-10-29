@@ -17,17 +17,12 @@ struct NowPlayingCard: View {
                 .font(.callout.weight(.semibold))
                 .lineLimit(2).multilineTextAlignment(.center)
             HStack(spacing: 14) {
-                Button {
-                    if isFavorite { showRemoveConfirm = true }
-                    else { showAddFav = true }
-                } label: {
-                    Image(systemName: isFavorite ? "star.fill" : "star")
-                        .font(.system(size: 14))
-                        .foregroundStyle(isFavorite ? Color.accentColor.opacity(0.55) : Color.primary)
+                Button { player.refresh() } label: {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 18))
                 }
                 .buttonStyle(.plain)
                 .disabled(player.sourceURL.isEmpty)
-                .help(isFavorite ? "Remove from favorites" : "Add current to favorites")
+                .help("Reload stream")
                 Button { player.toggle() } label: {
                     Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 26))
@@ -61,6 +56,7 @@ struct NowPlayingCard: View {
         .padding(8)
         .frame(maxWidth: .infinity)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(alignment: .topLeading) { favoriteButton.padding(6) }
         .confirmationDialog(
             "Remove from favorites?",
             isPresented: $showRemoveConfirm,
@@ -75,6 +71,20 @@ struct NowPlayingCard: View {
         } message: {
             Text("“\(favorites.favorite(for: player.sourceURL)?.name ?? player.title)” will be removed from your favorites.")
         }
+    }
+
+    private var favoriteButton: some View {
+        Button {
+            if isFavorite { showRemoveConfirm = true }
+            else { showAddFav = true }
+        } label: {
+            Image(systemName: isFavorite ? "star.fill" : "star")
+                .font(.system(size: 14))
+                .foregroundStyle(isFavorite ? Color.accentColor.opacity(0.55) : Color.primary)
+        }
+        .buttonStyle(.plain)
+        .disabled(player.sourceURL.isEmpty)
+        .help(isFavorite ? "Remove from favorites" : "Add current to favorites")
     }
 
     @ViewBuilder private var statusLine: some View {
