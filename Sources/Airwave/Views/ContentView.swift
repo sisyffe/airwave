@@ -2,10 +2,13 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
+    enum ListMode: Hashable { case favorites, recents }
+
     @EnvironmentObject var player: AudioPlayer
     @EnvironmentObject var favorites: FavoritesStore
     @State private var link = ""
     @State private var showAddFav = false
+    @State private var listMode: ListMode = .favorites
     @FocusState private var linkFocused: Bool
 
     var body: some View {
@@ -30,18 +33,46 @@ struct ContentView: View {
                         .controlSize(.small)
                         .help("Paste a link from the clipboard")
                 }
-
-                HStack {
-                    Text("Favorites").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    Spacer()
-                }
-
-                FavoritesList()
             }
-            .padding(EdgeInsets(top: 0, leading: 10, bottom: 10, trailing: 10))
+            .padding(EdgeInsets(top: 0, leading: 10, bottom: 8, trailing: 10))
+
+            Divider()
+
+            Group {
+                if listMode == .favorites {
+                    FavoritesList()
+                } else {
+                    RecentsList()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            // Always-visible bottom bar: the library switcher lives here so it
+            // reads as secondary to the player above.
+            HStack(spacing: 6) {
+                Picker("", selection: $listMode) {
+                    Text("Favorites").tag(ListMode.favorites)
+                    Text("Recents").tag(ListMode.recents)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.mini)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.bar)
         }
-        .contentShape(Rectangle())
-        .onTapGesture { NSApp.keyWindow?.makeFirstResponder(nil) }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Clear focus on clicks in empty areas from *behind* the content, so the
+        // gesture never competes with the favorites list's drag-to-reorder.
+        .background(
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { NSApp.keyWindow?.makeFirstResponder(nil) }
+        )
         .onExitCommand { NSApp.keyWindow?.makeFirstResponder(nil) }
         .background(TitlebarAccessoryInstaller())
         .onAppear {

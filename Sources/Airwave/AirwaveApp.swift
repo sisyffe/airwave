@@ -6,6 +6,7 @@ struct AirwaveApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var player = AudioPlayer.shared
     @StateObject private var favorites = FavoritesStore()
+    @StateObject private var recents = RecentsStore.shared
     @AppStorage(Prefs.hotstart) private var hotstart = true
     @AppStorage(Prefs.lastURL) private var lastURL = ""
 
@@ -19,10 +20,12 @@ struct AirwaveApp: App {
             ContentView()
                 .environmentObject(player)
                 .environmentObject(favorites)
-                .frame(minWidth: 240, idealWidth: 260, maxWidth: 360, minHeight: 380, idealHeight: 460)
+                .environmentObject(recents)
+                .frame(minWidth: 240, idealWidth: 260, minHeight: 380, idealHeight: 460)
                 .onReceive(NotificationCenter.default.publisher(for: .airwaveArtwork)) { n in
                     if let url = n.object as? String, let data = n.userInfo?["data"] as? Data {
                         favorites.setThumbnail(data, for: url)
+                        recents.setThumbnail(data, for: url)
                     }
                 }
                 .task { runHotstart() }
@@ -47,6 +50,8 @@ struct AirwaveApp: App {
         Settings {
             PreferencesView()
                 .environmentObject(favorites)
+                .environmentObject(recents)
+                .environmentObject(player)
         }
     }
 
@@ -120,8 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
             .applicationName: "Airwave",
-            .applicationVersion: "1.0.3",
-            .version: "1.0.3",
+            .applicationVersion: "1.1.0",
+            .version: "1.1.0",
             .credits: credits
         ])
     }

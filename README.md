@@ -5,7 +5,7 @@
 ![Platform: macOS 14.0+](https://img.shields.io/badge/platform-macOS%2014.0%2B-blue.svg)
 ![Swift 5.9+](https://img.shields.io/badge/swift-5.9%2B-orange.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
-![Version: 1.0.1](https://img.shields.io/badge/version-1.0.1-informational.svg)
+![Version: 1.1.0](https://img.shields.io/badge/version-1.1.0-informational.svg)
 
 Airwave lets you listen to live internet radio, direct audio streams, and YouTube videos or live broadcasts without keeping a heavy web browser tab open. Designed exclusively for macOS Sonoma and later, it integrates seamlessly with system media controls, the Control Center Now Playing widget, and keyboard shortcuts.
 
@@ -16,11 +16,15 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
 ## Features
 
 - **Hybrid Stream Playback:** Play direct audio stream URLs (`mp3`, `aac`, `m4a`, `m3u8`, etc.) and extract audio-only or HLS live streams from YouTube links automatically.
-- **Favorites Management:** Save your favorite stations and streams, rename them inline, delete them with confirmation, and reorder them via drag-and-drop.
-- **Smart Artwork & Metadata Caching:** Automatically fetches and downscales thumbnails from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons, and persists them alongside your saved favorites.
+- **Favorites Management:** Save your favorite stations and streams, rename them inline, remove them from the row's `…` menu, and reorder them by dragging (both in the main window and in Settings). Import and export your list as a lossless JSON file from Preferences.
+- **Recent History:** A Recents view — switched with Favorites from the bar at the bottom of the main window — remembers your recently played tracks for quick replay. The history size (1–20, default 5) and a "Clear history" action live in **Settings → Recents**.
+- **Volume Control:** In-app volume slider from 0% to 100% (default 75%), with snap stops every 25%.
+- **ICY "Now Playing" Metadata:** For direct radio streams (Icecast/Shoutcast), Airwave reads inline ICY metadata to show the station name and the current song — in the player card and in macOS Control Center.
+- **Smart Artwork & Metadata Caching:** Automatically fetches and downscales thumbnails from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons. Covers are refreshed on every play and persisted alongside your saved favorites and recent tracks.
 - **Native macOS Integration:**
   - Full support for `MPNowPlayingInfoCenter` (Control Center & Lock Screen artwork and playback state) and `MPRemoteCommandCenter` (hardware media keys).
-  - Live network status indicator (`Connected`, `Weak connection`, `No network`) and quick Preferences button embedded directly in the window titlebar.
+  - Live network status indicator (`Connected`, `Weak connection`, `No network`) with an immediate, color-coded hover label, plus a quick Preferences button embedded directly in the window titlebar.
+  - A right-click Dock menu with **Play/Pause** and a **Recent Tracks** submenu for quick playback.
   - Optional **Launch at Login** via `SMAppService`.
 - **Hotstart:** Optionally resume your last played stream automatically as soon as the app launches.
 - **Background Playback Mode:** Choose whether closing the main window quits the application or keeps Airwave running silently in the background.
@@ -76,6 +80,7 @@ Airwave/
 ├── make-app.sh
 ├── LICENSE
 ├── Resources/
+│   ├── AppIcon.icns
 │   └── screenshot.png
 └── Sources/
     └── Airwave/
@@ -87,7 +92,7 @@ Airwave/
 
 ### Build & Package `Airwave.app`
 
-The repository includes a turnkey build script (`make-app.sh`) that compiles a release binary via Swift Package Manager, generates the macOS `.app` bundle structure (`dist/Airwave.app`), writes the `Info.plist` (including `NSAllowsArbitraryLoads` so non-HTTPS radio streams can play), copies `AppIcon.icns` if present in the root folder, and applies an ad-hoc code signature.
+The repository includes a turnkey build script (`make-app.sh`) that compiles a release binary via Swift Package Manager, generates the macOS `.app` bundle structure (`dist/Airwave.app`), writes the `Info.plist` (including `NSAllowsArbitraryLoads` so non-HTTPS radio streams can play), copies `Resources/AppIcon.icns` if present, and applies an ad-hoc code signature.
 
 ```bash
 # 1. Clone the repository
@@ -120,14 +125,18 @@ Sources/Airwave/
 ├── Services/
 │   ├── AudioPlayer.swift          # @MainActor AVPlayer wrapper, generation-safe async loading & MediaPlayer integration
 │   ├── StreamResolver.swift       # Direct stream vs. YouTubeKit extraction & OpenGraph/favicon artwork fetching
+│   ├── ICYMetadata.swift          # Icecast/Shoutcast inline metadata reader (station name & current song)
 │   ├── Favorite.swift             # Codable Favorite model & UserDefaults-backed FavoritesStore
+│   ├── FavoritesIO.swift          # Lossless JSON import/export & merge for favorites
+│   ├── Recents.swift              # UserDefaults-backed RecentsStore (configurable 1–20 history)
 │   └── Prefs.swift                # Centralized UserDefaults keys
 ├── Views/
-│   ├── ContentView.swift          # Main window layout (NowPlayingCard, URL input bar, FavoritesList)
-│   └── PreferencesView.swift      # Settings window (General tab & tabular Favorites manager)
+│   ├── ContentView.swift          # Main window layout (NowPlayingCard, URL bar, list with bottom Favorites/Recents switcher)
+│   └── PreferencesView.swift      # Settings window (General, Recents & master–detail Favorites tabs)
 └── Components/
-    ├── NowPlayingCard.swift       # Playback header with status pill, scrolling title, transport & volume slider
-    ├── FavoritesList.swift        # Interactive list with inline rename & drag-and-drop reordering
+    ├── NowPlayingCard.swift       # Playback header with status pill, title/song, transport & volume slider
+    ├── FavoritesList.swift        # Interactive list with inline rename & native drag-to-reorder
+    ├── RecentsList.swift          # Recently played tracks with quick replay
     ├── TitlebarAccessory.swift    # AppKit NSTitlebarAccessoryViewController + NWPathMonitor network indicator
     ├── AddFavoriteSheet.swift     # Modal sheet for naming a newly saved favorite stream
     └── Thumb.swift                # Reusable rounded thumbnail view with fallback icon
@@ -138,8 +147,9 @@ Sources/Airwave/
 - **Stream Resolution Pipeline (`StreamResolver`):**
   1. Validates `http`/`https` schemes and checks whether the URL extension matches known direct audio formats.
   2. For YouTube URLs, queries `YouTubeKit` locally and selects the best stream in priority order: **HLS live stream** → **highest-bitrate M4A audio-only stream** → **lowest-resolution natively playable muxed stream**.
-  3. Fetches artwork asynchronously (up to 300 KB of HTML inspected for `og:image` / `twitter:image` meta tags, falling back to Google's S2 favicon service) and downscales images to 240 px PNG data for compact storage.
-- **Lightweight Persistence (`FavoritesStore` & `Prefs`):** Favorites and cached thumbnail `Data` are serialized as JSON in `UserDefaults`, keeping the app completely self-contained with zero external database dependencies.
+  3. Fetches artwork asynchronously (up to 300 KB of HTML inspected for `og:image` / `twitter:image` meta tags, falling back to Google's S2 favicon service) and downscales images to 256 px PNG data for compact storage.
+- **ICY Metadata Reader (`ICYMetadata`):** For direct radio streams, a second, audio-less connection parses inline `icy-metaint` blocks to surface the station name and current song without touching the playback pipeline; the task is generation-guarded and cancelled on stop or track change.
+- **Lightweight Persistence (`FavoritesStore`, `RecentsStore` & `Prefs`):** Favorites, recent history, and cached thumbnail `Data` are serialized as JSON in `UserDefaults`, keeping the app completely self-contained with zero external database dependencies.
 
 ---
 
@@ -149,7 +159,8 @@ Sources/Airwave/
 | :--- | :--- |
 | **Play / Pause** | `Space` (via Playback menu) or Media Play/Pause key |
 | **Stop Stream** | `⌘.` (`Cmd + Period`) |
-| **Volume Control** | In-app volume slider (persisted across launches) |
+| **Refresh Stream** | `⌘R` (`Cmd + R`) |
+| **Volume Control** | In-app volume slider, 0–100% with 25% snap stops (persisted across launches) |
 
 ---
 

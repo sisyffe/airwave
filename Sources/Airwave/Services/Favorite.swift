@@ -24,9 +24,9 @@ final class FavoritesStore: ObservableObject {
         items.append(Favorite(name: name.isEmpty ? url : name, url: url, thumbnail: thumbnail))
     }
 
-    /// Fill in a missing thumbnail once one is known (e.g. after playing).
+    /// Store the latest thumbnail for a favorite (refreshed on every play).
     func setThumbnail(_ data: Data, for url: String) {
-        guard let i = items.firstIndex(where: { $0.url == url }), items[i].thumbnail == nil else { return }
+        guard let i = items.firstIndex(where: { $0.url == url }), items[i].thumbnail != data else { return }
         items[i].thumbnail = data
     }
 

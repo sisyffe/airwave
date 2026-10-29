@@ -9,6 +9,24 @@ struct NowPlayingCard: View {
     private var isFavorite: Bool { favorites.contains(url: player.sourceURL) }
     private var volumePercentage: Int { Int((player.volume * 100).rounded()) }
 
+    /// Volume stops every 25%; the slider snaps to one when it gets close.
+    private static let volumeStops: [Float] = [0, 0.25, 0.5, 0.75, 1.0]
+    private static let volumeSnap: Float = 0.04
+
+    private var volumeBinding: Binding<Float> {
+        Binding(
+            get: { player.volume },
+            set: { newValue in
+                let clamped = min(max(newValue, 0), 1)
+                if let stop = Self.volumeStops.first(where: { abs($0 - clamped) <= Self.volumeSnap }) {
+                    player.volume = stop
+                } else {
+                    player.volume = clamped
+                }
+            }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 6) {
             statusLine.font(.caption2)
@@ -16,6 +34,14 @@ struct NowPlayingCard: View {
             Text(player.title.isEmpty ? "Nothing playing" : player.title)
                 .font(.callout.weight(.semibold))
                 .lineLimit(2).multilineTextAlignment(.center)
+            if let song = player.streamTitle, song != player.title {
+                Text("♪ \(song)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity)
+            }
             HStack(spacing: 14) {
                 Button { player.refresh() } label: {
                     Image(systemName: "arrow.clockwise").font(.system(size: 18))
@@ -37,9 +63,9 @@ struct NowPlayingCard: View {
                 .disabled(player.state == .idle)
                 .help("Stop")
             }
-            HStack(spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Image(systemName: "speaker.fill")
-                Slider(value: $player.volume, in: 0...1)
+                Slider(value: volumeBinding, in: 0...1)
                     .controlSize(.mini)
                     .accessibilityLabel("Volume")
                     .accessibilityValue("\(volumePercentage) percent")

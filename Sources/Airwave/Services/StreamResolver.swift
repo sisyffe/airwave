@@ -10,6 +10,8 @@ enum StreamResolver {
         let title: String?
         var thumbnailURL: URL? = nil
         var headers: [String: String] = [:]
+        /// True for direct audio/HLS links (as opposed to resolved YouTube pages).
+        var isDirect: Bool = false
     }
 
     enum ResolveError: LocalizedError {
@@ -31,7 +33,7 @@ enum StreamResolver {
             throw ResolveError.invalidURL
         }
         if directExtensions.contains(url.pathExtension.lowercased()) {
-            return Resolved(streamURL: url, title: nil)
+            return Resolved(streamURL: url, title: nil, isDirect: true)
         }
         return try await resolveYouTubeKit(url)
     }

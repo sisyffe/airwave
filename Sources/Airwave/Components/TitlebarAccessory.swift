@@ -26,17 +26,30 @@ final class ConnectionMonitor: ObservableObject {
 struct TitlebarButtons: View {
     @ObservedObject private var conn = ConnectionMonitor.shared
     let openSettings: OpenSettingsAction
+    @State private var hovering = false
+
+    private var quality: (label: String, color: Color, symbol: String) {
+        switch conn.quality {
+        case .good: return ("Connected", .green, "wifi")
+        case .weak: return ("Weak connection", .yellow, "wifi.exclamationmark")
+        case .offline: return ("No network", .red, "wifi.slash")
+        }
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            switch conn.quality {
-            case .good:
-                Image(systemName: "wifi").foregroundStyle(.green).help("Internet connection available")
-            case .weak:
-                Image(systemName: "wifi.exclamationmark").foregroundStyle(.yellow).help("Internet available on a metered connection, such as a personal hotspot. This does not measure signal strength.")
-            case .offline:
-                Image(systemName: "wifi.slash").foregroundStyle(.red).help("No internet connection. Online streams cannot load.")
-            }
+            // Hovering shows the quality immediately as colored text (a native
+            // .help tooltip has an uncontrollable delay and cannot be colored).
+            Image(systemName: quality.symbol)
+                .foregroundStyle(quality.color)
+                .onHover { hovering = $0 }
+                .popover(isPresented: $hovering, arrowEdge: .bottom) {
+                    Text(quality.label)
+                        .font(.caption)
+                        .foregroundStyle(quality.color)
+                        .padding(6)
+                }
+                .accessibilityLabel(quality.label)
             Button {
                 openSettings()
             } label: {

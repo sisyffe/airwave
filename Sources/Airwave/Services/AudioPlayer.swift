@@ -16,6 +16,8 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var sourceURL: String = ""
     /// Thumbnail of the current link (PNG/JPEG data), if one could be fetched.
     @Published private(set) var artwork: Data?
+    /// Current song reported by ICY metadata for direct radio streams (nil = none).
+    @Published private(set) var streamTitle: String?
     /// Last playback error, shown as an alert by the UI (nil = none).
     @Published private(set) var lastError: String?
     @Published var volume: Float {
@@ -26,6 +28,8 @@ final class AudioPlayer: ObservableObject {
     private let player = AVPlayer()
     private var statusObs: NSKeyValueObservation?
     private var rateObs: NSKeyValueObservation?
+    /// ICY metadata reader task for the current direct stream, if any.
+    private var icyTask: Task<Void, Never>?
     /// Incremented by every play() call; stale async work bails out if it changed.
     private var generation = 0
 
@@ -33,7 +37,7 @@ final class AudioPlayer: ObservableObject {
 
     private init() {
         let saved = UserDefaults.standard.object(forKey: Prefs.volume) as? Float
-        volume = saved ?? 0.8
+        volume = saved ?? Prefs.defaultVolume
         player.volume = volume
         player.automaticallyWaitsToMinimizeStalling = true
         setupRemoteCommands()
@@ -62,6 +66,9 @@ final class AudioPlayer: ObservableObject {
         let previous = Snapshot(url: sourceURL, title: self.title, artwork: artwork,
                                 item: player.currentItem, wasPlaying: isPlaying)
         state = .loading
+        streamTitle = nil
+        icyTask?.cancel()
+        icyTask = nil
         sourceURL = urlString
         self.title = title ?? urlString
         artwork = knownArtwork
@@ -84,15 +91,16 @@ final class AudioPlayer: ObservableObject {
             player.replaceCurrentItem(with: item)
             player.play()
             UserDefaults.standard.set(urlString, forKey: Prefs.lastURL)
-            RecentsStore.shared.record(name: self.title, url: urlString)
+            RecentsStore.shared.record(name: self.title, url: urlString, thumbnail: artwork)
             updateNowPlaying()
-            if knownArtwork == nil {
-                let data = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: urlString)
-                if gen == generation, let data {
-                    artwork = data
-                    updateNowPlaying()
-                    NotificationCenter.default.post(name: .airwaveArtwork, object: urlString, userInfo: ["data": data])
-                }
+            startICYIfEligible(resolved, gen: gen)
+            // Always refresh the artwork, even when a cached one was supplied
+            // (from favorites/recents), so covers stay up to date on every play.
+            let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: urlString)
+            if gen == generation, let fetched, fetched != artwork {
+                artwork = fetched
+                updateNowPlaying()
+                NotificationCenter.default.post(name: .airwaveArtwork, object: urlString, userInfo: ["data": fetched])
             }
         } catch {
             guard gen == generation else { return } // a newer link owns the UI
@@ -148,8 +156,29 @@ final class AudioPlayer: ObservableObject {
     func stop() {
         player.pause()
         player.replaceCurrentItem(with: nil)
+        icyTask?.cancel()
+        icyTask = nil
+        streamTitle = nil
         state = .idle
         MPNowPlayingInfoCenter.default().playbackState = .stopped
+    }
+
+    /// Starts reading ICY metadata for direct radio streams. Adopts the station
+    /// name as the title when the title is still just the raw URL.
+    private func startICYIfEligible(_ resolved: StreamResolver.Resolved, gen: Int) {
+        guard resolved.isDirect, ICYMetadata.isEligible(resolved.streamURL) else { return }
+        let url = resolved.streamURL
+        icyTask = Task { [weak self] in
+            for await info in ICYMetadata.stream(from: url) {
+                guard let self, gen == self.generation else { return }
+                if let station = info.station, self.title == self.sourceURL {
+                    self.title = station
+                    RecentsStore.shared.record(name: station, url: self.sourceURL, thumbnail: self.artwork)
+                }
+                self.streamTitle = info.song
+                self.updateNowPlaying()
+            }
+        }
     }
 
     func clearError() { lastError = nil }
@@ -181,7 +210,7 @@ final class AudioPlayer: ObservableObject {
         let playing = player.timeControlStatus == .playing
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: title.isEmpty ? "Airwave" : title,
-            MPMediaItemPropertyArtist: URL(string: sourceURL)?.host ?? "Airwave",
+            MPMediaItemPropertyArtist: streamTitle ?? URL(string: sourceURL)?.host ?? "Airwave",
             MPNowPlayingInfoPropertyIsLiveStream: true,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
             MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
