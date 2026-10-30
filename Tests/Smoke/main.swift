@@ -77,6 +77,44 @@ do {
         ],
         "merge preserves existing order and appends new entries"
     )
+
+    let exported = try! FavoritesIO.decode(FavoritesIO.encode(items + [Favorite(name: "Draft", url: "")]))
+    check(exported.map(\.url) == items.map(\.url), "export skips empty-URL drafts (symmetric with import)")
+}
+
+// MARK: PlaybackGeneration
+
+do {
+    var generation = PlaybackGeneration()
+    let first = generation.begin()
+    check(generation.isCurrent(first), "a fresh token is current")
+    let second = generation.begin()
+    check(!generation.isCurrent(first), "starting a new generation invalidates the old token")
+    check(generation.isCurrent(second), "the newest token is current")
+
+    generation.invalidate()
+    check(!generation.isCurrent(second), "invalidate() makes outstanding tokens stale")
+}
+
+// MARK: ICYMetadata
+
+do {
+    check(ICYMetadata.isEligible(URL(string: "https://example.com/stream.mp3")!), "mp3 is ICY-eligible")
+    check(!ICYMetadata.isEligible(URL(string: "https://example.com/stream.m3u8")!), "m3u8 is not ICY-eligible")
+
+    func block(_ text: String) -> [UInt8] { Array(text.utf8) }
+    check(
+        ICYMetadata.parseStreamTitle(block("StreamTitle='Artist - Song';")) == "Artist - Song",
+        "parseStreamTitle extracts the song"
+    )
+    check(
+        ICYMetadata.parseStreamTitle(block("StreamTitle='   ';")) == nil,
+        "parseStreamTitle treats a blank title as nil"
+    )
+    check(
+        ICYMetadata.parseStreamTitle(block("no metadata here")) == nil,
+        "parseStreamTitle returns nil without a StreamTitle"
+    )
 }
 
 if failures > 0 {
