@@ -25,7 +25,7 @@ enum StreamResolver {
         }
     }
 
-    private static let directExtensions: Set<String> = ["mp3", "aac", "m4a", "m3u8", "ogg", "opus", "wav", "flac", "pls"]
+    private static let directExtensions: Set<String> = ["mp3", "aac", "m4a", "m3u8", "ogg", "opus", "wav", "flac"]
 
     static func resolve(_ input: String) async throws -> Resolved {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
