@@ -159,7 +159,11 @@ final class AudioPlayer: ObservableObject {
         icyTask?.cancel()
         icyTask = nil
         streamTitle = nil
+        sourceURL = ""
+        title = ""
+        artwork = nil
         state = .idle
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
     }
 
