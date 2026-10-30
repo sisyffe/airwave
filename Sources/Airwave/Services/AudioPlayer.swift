@@ -30,8 +30,9 @@ final class AudioPlayer: ObservableObject {
     private var rateObservation: NSKeyValueObservation?
     /// ICY metadata reader task for the current direct stream, if any.
     private var icyTask: Task<Void, Never>?
-    /// Incremented by every play() call; stale async work bails out if it changed.
-    private var generation = 0
+    /// Guards async playback work; stale work is dropped if the token is no
+    /// longer current (a newer play, or a stop).
+    private var generation = PlaybackGeneration()
 
     var isPlaying: Bool { state == .playing }
 
@@ -61,20 +62,19 @@ final class AudioPlayer: ObservableObject {
     func play(urlString: String, title: String? = nil, artwork knownArtwork: Data? = nil) async {
         hasStarted = true
         lastError = nil
-        generation += 1
-        let playGeneration = generation
+        let playGeneration = generation.begin()
         let previous = Snapshot(
             url: sourceURL, title: self.title, artwork: artwork,
             item: player.currentItem, wasPlaying: isPlaying)
         beginLoading(urlString: urlString, title: title, artwork: knownArtwork)
         do {
             let resolved = try await StreamResolver.resolve(urlString)
-            guard playGeneration == generation else { return }  // user switched meanwhile
+            guard generation.isCurrent(playGeneration) else { return }  // user switched or stopped
             if title == nil, let resolvedTitle = resolved.title { self.title = resolvedTitle }
             start(resolved, urlString: urlString, previous: previous, playGeneration: playGeneration)
             await refreshArtwork(resolved, page: urlString, playGeneration: playGeneration)
         } catch {
-            guard playGeneration == generation else { return }  // a newer link owns the UI
+            guard generation.isCurrent(playGeneration) else { return }  // a newer link owns the UI
             restore(previous)  // keep whatever was playing…
             lastError = error.localizedDescription  // …and surface the problem as an alert
         }
@@ -97,7 +97,7 @@ final class AudioPlayer: ObservableObject {
         let item = makePlayerItem(for: resolved)
         statusObservation = item.observe(\.status) { [weak self] item, _ in
             Task { @MainActor in
-                guard let self, item.status == .failed, self.generation == playGeneration else { return }
+                guard let self, item.status == .failed, self.generation.isCurrent(playGeneration) else { return }
                 self.itemFailed(item, previous: previous)
             }
         }
@@ -120,7 +120,7 @@ final class AudioPlayer: ObservableObject {
     /// favorites/recents), so covers stay up to date on every play.
     private func refreshArtwork(_ resolved: StreamResolver.Resolved, page: String, playGeneration: Int) async {
         let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: page)
-        if playGeneration == generation, let fetched, fetched != artwork {
+        if generation.isCurrent(playGeneration), let fetched, fetched != artwork {
             artwork = fetched
             updateNowPlaying()
             NotificationCenter.default.post(name: .airwaveArtwork, object: page, userInfo: ["data": fetched])
@@ -172,6 +172,9 @@ final class AudioPlayer: ObservableObject {
     }
 
     func stop() {
+        // Invalidate in-flight work so a stream still resolving (or artwork still
+        // downloading) cannot start playback or paint artwork after the stop.
+        generation.invalidate()
         player.pause()
         player.replaceCurrentItem(with: nil)
         icyTask?.cancel()
@@ -192,7 +195,7 @@ final class AudioPlayer: ObservableObject {
         let url = resolved.streamURL
         icyTask = Task { [weak self] in
             for await info in ICYMetadata.stream(from: url) {
-                guard let self, playGeneration == self.generation else { return }
+                guard let self, self.generation.isCurrent(playGeneration) else { return }
                 if let station = info.station, self.title == self.sourceURL {
                     self.title = station
                     RecentsStore.shared.record(name: station, url: self.sourceURL, thumbnail: self.artwork)
