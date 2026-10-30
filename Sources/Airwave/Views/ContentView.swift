@@ -102,7 +102,7 @@ struct ContentView: View {
     }
 
     private func paste() {
-        guard let pasted = NSPasteboard.general.string(forType: .string),
+        guard let pasted = Clipboard.string,
             let firstToken = pasted.split(whereSeparator: \.isWhitespace).first
         else { return }
         link = String(firstToken)

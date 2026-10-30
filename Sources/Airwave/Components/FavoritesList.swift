@@ -93,10 +93,11 @@ private struct FavoriteRow: View {
                     .help("Currently playing")
             }
             Menu {
-                Button("Play", action: onPlay)
-                Button("Rename…", action: onRenameStart)
-                Divider()
-                Button("Delete", role: .destructive, action: onDelete)
+                FavoriteMenuItems(
+                    favorite: favorite,
+                    onPlay: onPlay,
+                    onRename: onRenameStart,
+                    onDelete: onDelete)
             } label: {
                 Image(systemName: "ellipsis")
             }
@@ -110,10 +111,28 @@ private struct FavoriteRow: View {
         .padding(.vertical, 3)
         .help(favorite.url)
         .contextMenu {
-            Button("Play", action: onPlay)
-            Button("Rename…", action: onRenameStart)
-            Divider()
-            Button("Delete", role: .destructive, action: onDelete)
+            FavoriteMenuItems(
+                favorite: favorite,
+                onPlay: onPlay,
+                onRename: onRenameStart,
+                onDelete: onDelete)
         }
+    }
+}
+
+/// Shared favorites menu items, used by both the row's "…" menu and its
+/// right-click context menu.
+private struct FavoriteMenuItems: View {
+    let favorite: Favorite
+    let onPlay: () -> Void
+    let onRename: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        Button("Play", action: onPlay)
+        Button("Copy Link") { Clipboard.copy(favorite.url) }
+        Divider()
+        Button("Rename…", action: onRename)
+        Button("Delete", role: .destructive, action: onDelete)
     }
 }

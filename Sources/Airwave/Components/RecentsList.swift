@@ -46,9 +46,7 @@ private struct RecentRow: View {
                     .help("Currently playing")
             }
             Menu {
-                Button("Play", action: onPlay)
-                Divider()
-                Button("Remove from Recents", role: .destructive, action: onRemove)
+                RecentMenuItems(track: track, onPlay: onPlay, onRemove: onRemove)
             } label: {
                 Image(systemName: "ellipsis")
             }
@@ -64,9 +62,22 @@ private struct RecentRow: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onPlay)
         .contextMenu {
-            Button("Play", action: onPlay)
-            Divider()
-            Button("Remove from Recents", role: .destructive, action: onRemove)
+            RecentMenuItems(track: track, onPlay: onPlay, onRemove: onRemove)
         }
+    }
+}
+
+/// Shared recents menu items, used by both the row's "…" menu and its
+/// right-click context menu.
+private struct RecentMenuItems: View {
+    let track: RecentTrack
+    let onPlay: () -> Void
+    let onRemove: () -> Void
+
+    var body: some View {
+        Button("Play", action: onPlay)
+        Button("Copy Link") { Clipboard.copy(track.url) }
+        Divider()
+        Button("Remove from Recents", role: .destructive, action: onRemove)
     }
 }
