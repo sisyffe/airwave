@@ -222,6 +222,8 @@ final class AudioPlayer: ObservableObject {
         title = ""
         artwork = nil
         state = .idle
+        // Forget the resume URL so hotstart does not restart a stopped stream.
+        UserDefaults.standard.removeObject(forKey: Prefs.lastURL)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
     }
