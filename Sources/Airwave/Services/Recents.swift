@@ -38,19 +38,19 @@ final class RecentsStore: ObservableObject {
 
     func record(name: String, url: String, thumbnail: Data? = nil) {
         guard !url.isEmpty else { return }
-        var new = items.filter { $0.url != url }
+        var updated = items.filter { $0.url != url }
         let thumb = thumbnail.flatMap { ThumbnailCache.canonical($0, for: url) }
             ?? items.first(where: { $0.url == url })?.thumbnail
-        new.insert(RecentTrack(name: name.isEmpty ? url : name, url: url, thumbnail: thumb), at: 0)
-        if new.count > maxCount { new = Array(new.prefix(maxCount)) }
-        items = new
+        updated.insert(RecentTrack(name: name.isEmpty ? url : name, url: url, thumbnail: thumb), at: 0)
+        if updated.count > maxCount { updated = Array(updated.prefix(maxCount)) }
+        items = updated
     }
 
     /// Store the latest thumbnail for a recent track (refreshed on every play).
     func setThumbnail(_ data: Data, for url: String) {
-        guard let i = items.firstIndex(where: { $0.url == url }) else { return }
-        guard let canonical = ThumbnailCache.canonical(data, for: url), items[i].thumbnail != canonical else { return }
-        items[i].thumbnail = canonical
+        guard let index = items.firstIndex(where: { $0.url == url }) else { return }
+        guard let canonical = ThumbnailCache.canonical(data, for: url), items[index].thumbnail != canonical else { return }
+        items[index].thumbnail = canonical
     }
 
     func remove(_ track: RecentTrack) { items.removeAll { $0.id == track.id } }

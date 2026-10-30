@@ -18,8 +18,8 @@ enum FavoritesIO {
     static func merge(_ incoming: [Favorite], into existing: [Favorite]) -> (items: [Favorite], added: Int) {
         var merged = existing
         var added = 0
-        for fav in incoming where !fav.url.isEmpty && !merged.contains(where: { $0.url == fav.url }) {
-            merged.append(fav)
+        for favorite in incoming where !favorite.url.isEmpty && !merged.contains(where: { $0.url == favorite.url }) {
+            merged.append(favorite)
             added += 1
         }
         return (merged, added)

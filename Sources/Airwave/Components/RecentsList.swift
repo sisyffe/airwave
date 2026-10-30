@@ -37,7 +37,7 @@ private struct RecentRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Thumb(data: track.thumbnail, size: 24)
+            Thumbnail(data: track.thumbnail, size: 24)
             Text(track.name).font(.caption).lineLimit(1)
             Spacer(minLength: 0)
             if isCurrent {

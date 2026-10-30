@@ -14,18 +14,18 @@ struct FavoritesList: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
-                ForEach(favorites.items) { fav in
-                    FavoriteRow(fav: fav,
-                                isCurrent: player.sourceURL == fav.url && player.isPlaying,
-                                isRenaming: renamingID == fav.id,
+                ForEach(favorites.items) { favorite in
+                    FavoriteRow(favorite: favorite,
+                                isCurrent: player.sourceURL == favorite.url && player.isPlaying,
+                                isRenaming: renamingID == favorite.id,
                                 renameText: $renameText,
-                                onPlay: { play(fav) },
-                                onRenameStart: { renameText = fav.name; renamingID = fav.id },
+                                onPlay: { play(favorite) },
+                                onRenameStart: { renameText = favorite.name; renamingID = favorite.id },
                                 onRenameCommit: { newName in
-                                    favorites.rename(fav, to: newName)
+                                    favorites.rename(favorite, to: newName)
                                     renamingID = nil
                                 },
-                                onDelete: { favorites.remove(fav) })
+                                onDelete: { favorites.remove(favorite) })
                 }
                 .onMove { indices, newOffset in
                     favorites.items.move(fromOffsets: indices, toOffset: newOffset)
@@ -36,8 +36,8 @@ struct FavoritesList: View {
         }
     }
 
-    private func play(_ fav: Favorite) {
-        Task { await player.play(urlString: fav.url, title: fav.name, artwork: fav.thumbnail) }
+    private func play(_ favorite: Favorite) {
+        Task { await player.play(urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail) }
     }
 }
 
@@ -45,7 +45,7 @@ struct FavoritesList: View {
 /// badge, "…" menu. Reordering is handled natively by the enclosing List;
 /// renaming happens in place, Finder-style.
 private struct FavoriteRow: View {
-    let fav: Favorite
+    let favorite: Favorite
     let isCurrent: Bool
     let isRenaming: Bool
     @Binding var renameText: String
@@ -53,7 +53,7 @@ private struct FavoriteRow: View {
     let onRenameStart: () -> Void
     let onRenameCommit: (String) -> Void
     let onDelete: () -> Void
-    @FocusState private var renameFocused: Bool
+    @FocusState private var isRenameFocused: Bool
 
     var body: some View {
         HStack(spacing: 6) {
@@ -62,23 +62,23 @@ private struct FavoriteRow: View {
                 .foregroundStyle(.tertiary)
                 .help("Drag to reorder")
             if isRenaming {
-                Thumb(data: fav.thumbnail, size: 24)
+                Thumbnail(data: favorite.thumbnail, size: 24)
                 TextField("Name", text: $renameText)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
-                    .focused($renameFocused)
+                    .focused($isRenameFocused)
                     .onSubmit { onRenameCommit(renameText) }
-                    .onChange(of: renameFocused) { _, focused in
+                    .onChange(of: isRenameFocused) { _, focused in
                         if !focused { onRenameCommit(renameText) }
                     }
-                    .task { renameFocused = true }
+                    .task { isRenameFocused = true }
             } else {
                 // A Button (rather than a row-wide tap gesture) keeps
                 // click-to-play from blocking the List's native reordering.
                 Button(action: onPlay) {
                     HStack(spacing: 6) {
-                        Thumb(data: fav.thumbnail, size: 24)
-                        Text(fav.name).font(.caption).lineLimit(1)
+                        Thumbnail(data: favorite.thumbnail, size: 24)
+                        Text(favorite.name).font(.caption).lineLimit(1)
                     }
                     .contentShape(Rectangle())
                 }
@@ -102,10 +102,10 @@ private struct FavoriteRow: View {
             .controlSize(.small)
             .fixedSize()
             .frame(width: 20, height: 22)
-            .help("More options for \(fav.name)")
+            .help("More options for \(favorite.name)")
         }
         .padding(.vertical, 3)
-        .help(fav.url)
+        .help(favorite.url)
         .contextMenu {
             Button("Play", action: onPlay)
             Button("Rename…", action: onRenameStart)

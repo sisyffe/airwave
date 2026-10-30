@@ -23,18 +23,18 @@ final class FavoritesStore: ObservableObject {
 
     /// Store the latest thumbnail for a favorite (refreshed on every play).
     func setThumbnail(_ data: Data, for url: String) {
-        guard let i = items.firstIndex(where: { $0.url == url }) else { return }
-        guard let canonical = ThumbnailCache.canonical(data, for: url), items[i].thumbnail != canonical else { return }
-        items[i].thumbnail = canonical
+        guard let index = items.firstIndex(where: { $0.url == url }) else { return }
+        guard let canonical = ThumbnailCache.canonical(data, for: url), items[index].thumbnail != canonical else { return }
+        items[index].thumbnail = canonical
     }
 
     func favorite(for url: String) -> Favorite? { items.first { $0.url == url } }
-    func remove(_ fav: Favorite) { items.removeAll { $0.id == fav.id } }
+    func remove(_ favorite: Favorite) { items.removeAll { $0.id == favorite.id } }
 
-    func rename(_ fav: Favorite, to name: String) {
-        guard let i = items.firstIndex(where: { $0.id == fav.id }) else { return }
+    func rename(_ favorite: Favorite, to name: String) {
+        guard let index = items.firstIndex(where: { $0.id == favorite.id }) else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        items[i].name = trimmed.isEmpty ? items[i].url : trimmed
+        items[index].name = trimmed.isEmpty ? items[index].url : trimmed
     }
     func contains(url: String) -> Bool { items.contains { $0.url == url } }
 

@@ -3,7 +3,7 @@ import SwiftUI
 struct NowPlayingCard: View {
     @EnvironmentObject var player: AudioPlayer
     @EnvironmentObject var favorites: FavoritesStore
-    @Binding var showAddFav: Bool
+    @Binding var showAddFavorite: Bool
     @State private var showRemoveConfirm = false
 
     private var isFavorite: Bool { favorites.contains(url: player.sourceURL) }
@@ -16,8 +16,8 @@ struct NowPlayingCard: View {
     private var volumeBinding: Binding<Float> {
         Binding(
             get: { player.volume },
-            set: { newValue in
-                let clamped = min(max(newValue, 0), 1)
+            set: { newVolume in
+                let clamped = min(max(newVolume, 0), 1)
                 if let stop = Self.volumeStops.first(where: { abs($0 - clamped) <= Self.volumeSnap }) {
                     player.volume = stop
                 } else {
@@ -30,7 +30,7 @@ struct NowPlayingCard: View {
     var body: some View {
         VStack(spacing: 6) {
             statusLine.font(.caption2)
-            Thumb(data: player.artwork, size: 120)
+            Thumbnail(data: player.artwork, size: 120)
             Text(player.title.isEmpty ? "Nothing playing" : player.title)
                 .font(.callout.weight(.semibold))
                 .lineLimit(2).multilineTextAlignment(.center)
@@ -89,8 +89,8 @@ struct NowPlayingCard: View {
             titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) {
-                if let fav = favorites.favorite(for: player.sourceURL) {
-                    favorites.remove(fav)
+                if let favorite = favorites.favorite(for: player.sourceURL) {
+                    favorites.remove(favorite)
                 }
             }
             Button("Cancel", role: .cancel) { }
@@ -102,7 +102,7 @@ struct NowPlayingCard: View {
     private var favoriteButton: some View {
         Button {
             if isFavorite { showRemoveConfirm = true }
-            else { showAddFav = true }
+            else { showAddFavorite = true }
         } label: {
             Image(systemName: isFavorite ? "star.fill" : "star")
                 .font(.system(size: 14))

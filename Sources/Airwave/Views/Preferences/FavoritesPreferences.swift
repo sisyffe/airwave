@@ -6,11 +6,11 @@ import UniformTypeIdentifiers
 /// lossless JSON import/export.
 struct FavoritesPreferences: View {
     @EnvironmentObject var favorites: FavoritesStore
-    @State private var selectedID: Favorite.ID?
+    @State private var selectedFavoriteID: Favorite.ID?
     @State private var message: String?
 
     private var selectedBinding: Binding<Favorite>? {
-        guard let id = selectedID,
+        guard let id = selectedFavoriteID,
               let index = favorites.items.firstIndex(where: { $0.id == id }) else { return nil }
         let items = $favorites.items
         return Binding<Favorite>(
@@ -22,22 +22,22 @@ struct FavoritesPreferences: View {
     var body: some View {
         HSplitView {
             VStack(spacing: 0) {
-                List(selection: $selectedID) {
-                    ForEach(favorites.items) { fav in
+                List(selection: $selectedFavoriteID) {
+                    ForEach(favorites.items) { favorite in
                         HStack(spacing: 6) {
                             Image(systemName: "line.3.horizontal")
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                                 .help("Drag to reorder")
-                            Thumb(data: fav.thumbnail, size: 20)
+                            Thumbnail(data: favorite.thumbnail, size: 20)
                             VStack(alignment: .leading, spacing: 0) {
-                                Text(fav.name).lineLimit(1)
-                                if let host = URL(string: fav.url)?.host {
+                                Text(favorite.name).lineLimit(1)
+                                if let host = URL(string: favorite.url)?.host {
                                     Text(host).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                                 }
                             }
                         }
-                        .tag(fav.id)
+                        .tag(favorite.id)
                     }
                     .onMove { indices, newOffset in
                         favorites.items.move(fromOffsets: indices, toOffset: newOffset)
@@ -51,7 +51,7 @@ struct FavoritesPreferences: View {
                     Button { add() } label: { Image(systemName: "plus") }
                         .help("Add a new favorite")
                     Button { delete() } label: { Image(systemName: "minus") }
-                        .disabled(selectedID == nil)
+                        .disabled(selectedFavoriteID == nil)
                         .help("Delete the selected favorite")
                     Spacer()
                     Button("Import…") { importFavorites() }
@@ -67,7 +67,7 @@ struct FavoritesPreferences: View {
 
             Group {
                 if let binding = selectedBinding {
-                    FavoriteEditor(fav: binding)
+                    FavoriteEditor(favorite: binding)
                 } else {
                     Text("Select a favorite to edit, or add a new one.")
                         .foregroundStyle(.secondary)
@@ -90,15 +90,15 @@ struct FavoritesPreferences: View {
     }
 
     private func add() {
-        let fav = Favorite(name: "New Favorite", url: "")
-        favorites.items.append(fav)
-        selectedID = fav.id
+        let favorite = Favorite(name: "New Favorite", url: "")
+        favorites.items.append(favorite)
+        selectedFavoriteID = favorite.id
     }
 
     private func delete() {
-        guard let id = selectedID, let index = favorites.items.firstIndex(where: { $0.id == id }) else { return }
+        guard let id = selectedFavoriteID, let index = favorites.items.firstIndex(where: { $0.id == id }) else { return }
         favorites.items.remove(at: index)
-        selectedID = nil
+        selectedFavoriteID = nil
     }
 
     private func exportFavorites() {

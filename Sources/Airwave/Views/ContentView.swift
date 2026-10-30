@@ -7,14 +7,14 @@ struct ContentView: View {
     @EnvironmentObject var player: AudioPlayer
     @EnvironmentObject var favorites: FavoritesStore
     @State private var link = ""
-    @State private var showAddFav = false
+    @State private var showAddFavorite = false
     @State private var listMode: ListMode = .favorites
-    @FocusState private var linkFocused: Bool
+    @FocusState private var isLinkFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
-                NowPlayingCard(showAddFav: $showAddFav)
+                NowPlayingCard(showAddFavorite: $showAddFavorite)
 
                 HStack(spacing: 4) {
                     Button(action: playLink) { Image(systemName: "play.fill") }
@@ -24,7 +24,7 @@ struct ContentView: View {
                     TextField("YouTube link", text: $link)
                         .controlSize(.small)
                         .help("Uses YouTubeKit. Paste a YouTube URL or a direct audio/HLS stream link; other website pages are not supported.")
-                        .focused($linkFocused)
+                        .focused($isLinkFocused)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(playLink)
                     Button(action: paste) {
@@ -76,9 +76,9 @@ struct ContentView: View {
         .onExitCommand { NSApp.keyWindow?.makeFirstResponder(nil) }
         .background(TitlebarAccessoryInstaller())
         .onAppear {
-            linkFocused = true
+            isLinkFocused = true
         }
-        .sheet(isPresented: $showAddFav) {
+        .sheet(isPresented: $showAddFavorite) {
             AddFavoriteSheet(initialName: player.title, url: player.sourceURL, thumbnail: player.artwork)
         }
         .alert("Playback failed", isPresented: errorShown) {
@@ -95,13 +95,13 @@ struct ContentView: View {
     private func playLink() {
         let url = link.trimmingCharacters(in: .whitespaces)
         guard !url.isEmpty else { return }
-        let fav = favorites.favorite(for: url)
-        Task { await player.play(urlString: url, title: fav?.name, artwork: fav?.thumbnail) }
+        let favorite = favorites.favorite(for: url)
+        Task { await player.play(urlString: url, title: favorite?.name, artwork: favorite?.thumbnail) }
     }
 
     private func paste() {
-        guard let s = NSPasteboard.general.string(forType: .string),
-              let first = s.split(whereSeparator: \.isWhitespace).first else { return }
-        link = String(first)
+        guard let pasted = NSPasteboard.general.string(forType: .string),
+              let firstToken = pasted.split(whereSeparator: \.isWhitespace).first else { return }
+        link = String(firstToken)
     }
 }

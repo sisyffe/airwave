@@ -26,8 +26,8 @@ final class AudioPlayer: ObservableObject {
 
     private(set) var hasStarted = false
     private let player = AVPlayer()
-    private var statusObs: NSKeyValueObservation?
-    private var rateObs: NSKeyValueObservation?
+    private var statusObservation: NSKeyValueObservation?
+    private var rateObservation: NSKeyValueObservation?
     /// ICY metadata reader task for the current direct stream, if any.
     private var icyTask: Task<Void, Never>?
     /// Incremented by every play() call; stale async work bails out if it changed.
@@ -41,8 +41,8 @@ final class AudioPlayer: ObservableObject {
         player.volume = volume
         player.automaticallyWaitsToMinimizeStalling = true
         setupRemoteCommands()
-        rateObs = player.observe(\.timeControlStatus) { [weak self] p, _ in
-            Task { @MainActor in self?.syncState(p.timeControlStatus) }
+        rateObservation = player.observe(\.timeControlStatus) { [weak self] player, _ in
+            Task { @MainActor in self?.syncState(player.timeControlStatus) }
         }
     }
 
@@ -62,7 +62,7 @@ final class AudioPlayer: ObservableObject {
         hasStarted = true
         lastError = nil
         generation += 1
-        let gen = generation
+        let playGeneration = generation
         let previous = Snapshot(url: sourceURL, title: self.title, artwork: artwork,
                                 item: player.currentItem, wasPlaying: isPlaying)
         state = .loading
@@ -75,16 +75,16 @@ final class AudioPlayer: ObservableObject {
         updateNowPlaying()
         do {
             let resolved = try await StreamResolver.resolve(urlString)
-            guard gen == generation else { return } // user switched meanwhile
-            if title == nil, let t = resolved.title { self.title = t }
+            guard playGeneration == generation else { return } // user switched meanwhile
+            if title == nil, let resolvedTitle = resolved.title { self.title = resolvedTitle }
             // Apply stream-specific headers when supplied by the resolver.
-            var opts: [String: Any] = [:]
-            if !resolved.headers.isEmpty { opts["AVURLAssetHTTPHeaderFieldsKey"] = resolved.headers }
-            let asset = AVURLAsset(url: resolved.streamURL, options: opts)
+            var options: [String: Any] = [:]
+            if !resolved.headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = resolved.headers }
+            let asset = AVURLAsset(url: resolved.streamURL, options: options)
             let item = AVPlayerItem(asset: asset)
-            statusObs = item.observe(\.status) { [weak self] item, _ in
+            statusObservation = item.observe(\.status) { [weak self] item, _ in
                 Task { @MainActor in
-                    guard let self, item.status == .failed, self.generation == gen else { return }
+                    guard let self, item.status == .failed, self.generation == playGeneration else { return }
                     self.itemFailed(item, previous: previous)
                 }
             }
@@ -93,17 +93,17 @@ final class AudioPlayer: ObservableObject {
             UserDefaults.standard.set(urlString, forKey: Prefs.lastURL)
             RecentsStore.shared.record(name: self.title, url: urlString, thumbnail: artwork)
             updateNowPlaying()
-            startICYIfEligible(resolved, gen: gen)
+            startICYIfEligible(resolved, playGeneration: playGeneration)
             // Always refresh the artwork, even when a cached one was supplied
             // (from favorites/recents), so covers stay up to date on every play.
             let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: urlString)
-            if gen == generation, let fetched, fetched != artwork {
+            if playGeneration == generation, let fetched, fetched != artwork {
                 artwork = fetched
                 updateNowPlaying()
                 NotificationCenter.default.post(name: .airwaveArtwork, object: urlString, userInfo: ["data": fetched])
             }
         } catch {
-            guard gen == generation else { return } // a newer link owns the UI
+            guard playGeneration == generation else { return } // a newer link owns the UI
             restore(previous) // keep whatever was playing…
             lastError = error.localizedDescription // …and surface the problem as an alert
         }
@@ -116,18 +116,18 @@ final class AudioPlayer: ObservableObject {
         lastError = message
     }
 
-    private func restore(_ s: Snapshot) {
-        if let item = s.item, player.currentItem !== item {
+    private func restore(_ snapshot: Snapshot) {
+        if let item = snapshot.item, player.currentItem !== item {
             player.replaceCurrentItem(with: item)
             if item.duration.isIndefinite {
                 item.seek(to: .positiveInfinity, completionHandler: nil) // back to the live edge
             }
         }
-        if s.wasPlaying, s.item != nil { player.play() }
-        sourceURL = s.url
-        title = s.title
-        artwork = s.artwork
-        state = s.item == nil ? .idle : (s.wasPlaying ? .playing : .paused)
+        if snapshot.wasPlaying, snapshot.item != nil { player.play() }
+        sourceURL = snapshot.url
+        title = snapshot.title
+        artwork = snapshot.artwork
+        state = snapshot.item == nil ? .idle : (snapshot.wasPlaying ? .playing : .paused)
         updateNowPlaying()
     }
 
@@ -169,12 +169,12 @@ final class AudioPlayer: ObservableObject {
 
     /// Starts reading ICY metadata for direct radio streams. Adopts the station
     /// name as the title when the title is still just the raw URL.
-    private func startICYIfEligible(_ resolved: StreamResolver.Resolved, gen: Int) {
+    private func startICYIfEligible(_ resolved: StreamResolver.Resolved, playGeneration: Int) {
         guard resolved.isDirect, ICYMetadata.isEligible(resolved.streamURL) else { return }
         let url = resolved.streamURL
         icyTask = Task { [weak self] in
             for await info in ICYMetadata.stream(from: url) {
-                guard let self, gen == self.generation else { return }
+                guard let self, playGeneration == self.generation else { return }
                 if let station = info.station, self.title == self.sourceURL {
                     self.title = station
                     RecentsStore.shared.record(name: station, url: self.sourceURL, thumbnail: self.artwork)
@@ -187,8 +187,8 @@ final class AudioPlayer: ObservableObject {
 
     func clearError() { lastError = nil }
 
-    private func syncState(_ s: AVPlayer.TimeControlStatus) {
-        switch s {
+    private func syncState(_ status: AVPlayer.TimeControlStatus) {
+        switch status {
         case .playing: state = .playing
         case .waitingToPlayAtSpecifiedRate: state = .loading
         case .paused: if player.currentItem != nil && state != .loading { state = .paused }
@@ -200,27 +200,27 @@ final class AudioPlayer: ObservableObject {
     // MARK: Now Playing / media keys
 
     private func setupRemoteCommands() {
-        let c = MPRemoteCommandCenter.shared()
-        c.playCommand.addTarget { [weak self] _ in Task { @MainActor in self?.resume() }; return .success }
-        c.pauseCommand.addTarget { [weak self] _ in Task { @MainActor in self?.pause() }; return .success }
-        c.togglePlayPauseCommand.addTarget { [weak self] _ in Task { @MainActor in self?.toggle() }; return .success }
-        c.stopCommand.addTarget { [weak self] _ in Task { @MainActor in self?.stop() }; return .success }
-        c.nextTrackCommand.isEnabled = false
-        c.previousTrackCommand.isEnabled = false
-        c.changePlaybackPositionCommand.isEnabled = false
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.playCommand.addTarget { [weak self] _ in Task { @MainActor in self?.resume() }; return .success }
+        commandCenter.pauseCommand.addTarget { [weak self] _ in Task { @MainActor in self?.pause() }; return .success }
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in Task { @MainActor in self?.toggle() }; return .success }
+        commandCenter.stopCommand.addTarget { [weak self] _ in Task { @MainActor in self?.stop() }; return .success }
+        commandCenter.nextTrackCommand.isEnabled = false
+        commandCenter.previousTrackCommand.isEnabled = false
+        commandCenter.changePlaybackPositionCommand.isEnabled = false
     }
 
     private func updateNowPlaying() {
         let playing = player.timeControlStatus == .playing
         var info: [String: Any] = [
-            MPMediaItemPropertyTitle: title.isEmpty ? "Airwave" : title,
-            MPMediaItemPropertyArtist: streamTitle ?? URL(string: sourceURL)?.host ?? "Airwave",
+            MPMediaItemPropertyTitle: title.isEmpty ? AppInfo.name : title,
+            MPMediaItemPropertyArtist: streamTitle ?? URL(string: sourceURL)?.host ?? AppInfo.name,
             MPNowPlayingInfoPropertyIsLiveStream: true,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
             MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
         ]
-        if let artwork, let img = NSImage(data: artwork) {
-            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: img.size) { _ in img }
+        if let artwork, let image = NSImage(data: artwork) {
+            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         } else if let icon = NSApp?.applicationIconImage {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: icon.size) { _ in icon }
         }

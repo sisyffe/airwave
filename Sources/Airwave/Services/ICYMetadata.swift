@@ -12,6 +12,9 @@ enum ICYMetadata {
     }
 
     private static let eligibleExtensions: Set<String> = ["mp3", "aac", "m4a", "ogg", "opus"]
+    private static let requestTimeout: TimeInterval = 15
+    /// Each metadata length byte counts this many bytes of metadata.
+    private static let metadataBlockUnitSize = 16
 
     /// Whether the URL points at a stream type that can carry ICY metadata.
     static func isEligible(_ url: URL) -> Bool {
@@ -22,25 +25,25 @@ enum ICYMetadata {
     /// the stream ends, errors, or the consuming task is cancelled.
     static func stream(from url: URL) -> AsyncStream<Info> {
         AsyncStream { continuation in
-            let task = Task { await run(url: url, continuation: continuation) }
+            let task = Task { await read(url: url, continuation: continuation) }
             continuation.onTermination = { _ in task.cancel() }
         }
     }
 
-    private static func run(url: URL, continuation: AsyncStream<Info>.Continuation) async {
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 15
-        req.setValue("1", forHTTPHeaderField: "Icy-MetaData")
-        req.setValue("Airwave/1.1", forHTTPHeaderField: "User-Agent")
-        req.setValue("*/*", forHTTPHeaderField: "Accept")
+    private static func read(url: URL, continuation: AsyncStream<Info>.Continuation) async {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = requestTimeout
+        request.setValue("1", forHTTPHeaderField: "Icy-MetaData")
+        request.setValue(AppInfo.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
 
         do {
-            let (bytes, response) = try await URLSession.shared.bytes(for: req)
-            guard let http = response as? HTTPURLResponse else { return }
+            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else { return }
 
-            let station = http.value(forHTTPHeaderField: "icy-name").flatMap { $0.isEmpty ? nil : $0 }
-            guard let metaIntStr = http.value(forHTTPHeaderField: "icy-metaint"),
-                  let metaInt = Int(metaIntStr), metaInt > 0 else {
+            let station = httpResponse.value(forHTTPHeaderField: "icy-name").flatMap { $0.isEmpty ? nil : $0 }
+            guard let metadataIntervalValue = httpResponse.value(forHTTPHeaderField: "icy-metaint"),
+                  let metadataInterval = Int(metadataIntervalValue), metadataInterval > 0 else {
                 if let station { continuation.yield(Info(station: station, song: nil)) }
                 return
             }
@@ -48,26 +51,26 @@ enum ICYMetadata {
 
             var iterator = bytes.makeAsyncIterator()
             while !Task.isCancelled {
-                // Skip `metaInt` bytes of audio.
-                var skipped = 0
-                while skipped < metaInt {
+                // Skip `metadataInterval` bytes of audio.
+                var bytesSkipped = 0
+                while bytesSkipped < metadataInterval {
                     guard try await iterator.next() != nil else { return }
-                    skipped += 1
+                    bytesSkipped += 1
                 }
                 // Length byte, in 16-byte units (0 = no metadata this block).
                 guard let lengthByte = try await iterator.next() else { return }
-                let metaLength = Int(lengthByte) * 16
-                guard metaLength > 0 else { continue }
+                let metadataLength = Int(lengthByte) * metadataBlockUnitSize
+                guard metadataLength > 0 else { continue }
 
-                var meta = [UInt8]()
-                meta.reserveCapacity(metaLength)
-                var read = 0
-                while read < metaLength {
+                var metadataBytes = [UInt8]()
+                metadataBytes.reserveCapacity(metadataLength)
+                var bytesRead = 0
+                while bytesRead < metadataLength {
                     guard let byte = try await iterator.next() else { return }
-                    meta.append(byte)
-                    read += 1
+                    metadataBytes.append(byte)
+                    bytesRead += 1
                 }
-                if let song = parseStreamTitle(meta) {
+                if let song = parseStreamTitle(metadataBytes) {
                     continuation.yield(Info(station: station, song: song))
                 }
             }

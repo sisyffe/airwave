@@ -15,7 +15,7 @@ struct AddFavoriteSheet: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Thumb(data: thumbnail, size: 64)
+            Thumbnail(data: thumbnail, size: 64)
             TextField("Name", text: $name).textFieldStyle(.roundedBorder)
             Text(url).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             HStack {

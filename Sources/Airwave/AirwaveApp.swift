@@ -22,8 +22,8 @@ struct AirwaveApp: App {
                 .environmentObject(favorites)
                 .environmentObject(recents)
                 .frame(minWidth: 240, idealWidth: 260, minHeight: 380, idealHeight: 460)
-                .onReceive(NotificationCenter.default.publisher(for: .airwaveArtwork)) { n in
-                    if let url = n.object as? String, let data = n.userInfo?["data"] as? Data {
+                .onReceive(NotificationCenter.default.publisher(for: .airwaveArtwork)) { notification in
+                    if let url = notification.object as? String, let data = notification.userInfo?["data"] as? Data {
                         favorites.setThumbnail(data, for: url)
                         recents.setThumbnail(data, for: url)
                     }
@@ -57,8 +57,8 @@ struct AirwaveApp: App {
 
     private func runHotstart() {
         guard hotstart, !AudioPlayer.shared.hasStarted, !lastURL.isEmpty else { return }
-        let fav = favorites.favorite(for: lastURL)
-        Task { await AudioPlayer.shared.play(urlString: lastURL, title: fav?.name, artwork: fav?.thumbnail) }
+        let favorite = favorites.favorite(for: lastURL)
+        Task { await AudioPlayer.shared.play(urlString: lastURL, title: favorite?.name, artwork: favorite?.thumbnail) }
     }
 }
 
@@ -99,10 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recentsItem.submenu = recentsMenu
         menu.addItem(recentsItem)
 
-        let toggle = NSMenuItem(title: AudioPlayer.shared.isPlaying ? "Pause" : "Play",
-                                action: #selector(dockToggle), keyEquivalent: "")
-        toggle.target = self
-        menu.addItem(toggle)
+        let toggleItem = NSMenuItem(title: AudioPlayer.shared.isPlaying ? "Pause" : "Play",
+                                    action: #selector(dockToggle), keyEquivalent: "")
+        toggleItem.target = self
+        menu.addItem(toggleItem)
 
         return menu
     }
@@ -124,9 +124,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
         )
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
-            .applicationName: "Airwave",
-            .applicationVersion: "1.1.0",
-            .version: "1.1.0",
+            .applicationName: AppInfo.name,
+            .applicationVersion: AppInfo.version,
+            .version: AppInfo.version,
             .credits: credits
         ])
     }
