@@ -1,83 +1,10 @@
 import SwiftUI
 import AppKit
-import ServiceManagement
 import UniformTypeIdentifiers
 
-struct PreferencesView: View {
-    var body: some View {
-        TabView {
-            GeneralPrefs().tabItem { Label("General", systemImage: "gearshape") }
-            RecentsPrefs().tabItem { Label("Recents", systemImage: "clock.arrow.circlepath") }
-            FavoritesPrefs().tabItem { Label("Favorites", systemImage: "star") }
-        }
-        .frame(width: 560, height: 380)
-    }
-}
-
-private struct GeneralPrefs: View {
-    @AppStorage(Prefs.hotstart) private var hotstart = true
-    @AppStorage(Prefs.quitOnLastWindowClosed) private var quitOnLastWindowClosed = Prefs.defaultQuitOnLastWindowClosed
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-
-    var body: some View {
-        Form {
-            Toggle("Hotstart: play automatically when Airwave opens", isOn: $hotstart)
-                .help("Resumes the last played source")
-            Toggle("Quit when the last window closes", isOn: $quitOnLastWindowClosed)
-                .help("On: closing the last window quits Airwave. Off: Airwave stays running and audio continues, like a standard macOS app. Use ⌘Q to quit.")
-            Toggle("Open Airwave at login", isOn: $launchAtLogin)
-                .onChange(of: launchAtLogin) { _, on in
-                    do { on ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() }
-                    catch { launchAtLogin = !on }
-                }
-                .help("Requires running Airwave as a bundled .app")
-        }
-        .formStyle(.grouped)
-    }
-}
-
-private struct RecentsPrefs: View {
-    @EnvironmentObject var recents: RecentsStore
-    @State private var confirmClear = false
-
-    private var maxCountBinding: Binding<Double> {
-        Binding(get: { Double(recents.maxCount) },
-                set: { recents.maxCount = Int($0.rounded()) })
-    }
-
-    var body: some View {
-        Form {
-            LabeledContent("History size") {
-                HStack(spacing: 8) {
-                    Slider(value: maxCountBinding,
-                           in: Double(Prefs.minRecentMaxCount)...Double(Prefs.maxRecentMaxCount),
-                           step: 1)
-                        .frame(width: 160)
-                    Text("\(recents.maxCount)")
-                        .monospacedDigit()
-                        .frame(width: 22, alignment: .trailing)
-                }
-            }
-            .help("How many recently played tracks to remember for quick play.")
-
-            LabeledContent("Clear history") {
-                Button("Clear Recent Tracks", role: .destructive) { confirmClear = true }
-                    .disabled(recents.items.isEmpty)
-                    .help("Remove all recently played tracks.")
-            }
-            .help("Removes every entry from the Recents list.")
-        }
-        .formStyle(.grouped)
-        .confirmationDialog("Clear recent history?", isPresented: $confirmClear, titleVisibility: .visible) {
-            Button("Clear", role: .destructive) { recents.clear() }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("This removes all \(recents.items.count) recently played track(s).")
-        }
-    }
-}
-
-private struct FavoritesPrefs: View {
+/// Favorites settings: a reorderable master list with a detail editor, plus
+/// lossless JSON import/export.
+struct FavoritesPreferences: View {
     @EnvironmentObject var favorites: FavoritesStore
     @State private var selectedID: Favorite.ID?
     @State private var message: String?
@@ -201,43 +128,5 @@ private struct FavoritesPrefs: View {
         } catch {
             message = "Import failed: \(error.localizedDescription)"
         }
-    }
-}
-
-private struct FavoriteEditor: View {
-    @Binding var fav: Favorite
-    @EnvironmentObject var player: AudioPlayer
-
-    private var looksPlayable: Bool {
-        guard let scheme = URL(string: fav.url)?.scheme else { return false }
-        return scheme == "http" || scheme == "https"
-    }
-
-    var body: some View {
-        Form {
-            HStack {
-                Spacer()
-                Thumb(data: fav.thumbnail, size: 72)
-                Spacer()
-            }
-            TextField("Name", text: $fav.name)
-            TextField("Link", text: $fav.url)
-                .help("YouTube URL or direct audio/HLS stream link")
-            if !fav.url.isEmpty && !looksPlayable {
-                Label("This doesn't look like a supported link.", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            HStack {
-                Spacer()
-                Button {
-                    Task { await player.play(urlString: fav.url, title: fav.name, artwork: fav.thumbnail) }
-                } label: {
-                    Label("Play", systemImage: "play.fill")
-                }
-                .disabled(!looksPlayable)
-            }
-        }
-        .formStyle(.grouped)
     }
 }
