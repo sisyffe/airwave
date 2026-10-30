@@ -43,7 +43,8 @@ enum ICYMetadata {
 
             let station = httpResponse.value(forHTTPHeaderField: "icy-name").flatMap { $0.isEmpty ? nil : $0 }
             guard let metadataIntervalValue = httpResponse.value(forHTTPHeaderField: "icy-metaint"),
-                  let metadataInterval = Int(metadataIntervalValue), metadataInterval > 0 else {
+                let metadataInterval = Int(metadataIntervalValue), metadataInterval > 0
+            else {
                 if let station { continuation.yield(Info(station: station, song: nil)) }
                 return
             }

@@ -43,20 +43,26 @@ struct NowPlayingCard: View {
                     .frame(maxWidth: .infinity)
             }
             HStack(spacing: 14) {
-                Button { player.refresh() } label: {
+                Button {
+                    player.refresh()
+                } label: {
                     Image(systemName: "arrow.clockwise").font(.system(size: 18))
                 }
                 .buttonStyle(.plain)
                 .disabled(player.sourceURL.isEmpty)
                 .help("Reload stream")
-                Button { player.toggle() } label: {
+                Button {
+                    player.toggle()
+                } label: {
                     Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 26))
                 }
                 .buttonStyle(.plain)
                 .disabled(player.sourceURL.isEmpty)
                 .help(player.isPlaying ? "Pause" : "Play")
-                Button { player.stop() } label: {
+                Button {
+                    player.stop()
+                } label: {
                     Image(systemName: "stop.circle").font(.system(size: 18))
                 }
                 .buttonStyle(.plain)
@@ -93,7 +99,7 @@ struct NowPlayingCard: View {
                     favorites.remove(favorite)
                 }
             }
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) {}
         } message: {
             Text("“\(favorites.favorite(for: player.sourceURL)?.name ?? player.title)” will be removed from your favorites.")
         }
@@ -101,8 +107,7 @@ struct NowPlayingCard: View {
 
     private var favoriteButton: some View {
         Button {
-            if isFavorite { showRemoveConfirm = true }
-            else { showAddFavorite = true }
+            if isFavorite { showRemoveConfirm = true } else { showAddFavorite = true }
         } label: {
             Image(systemName: isFavorite ? "star.fill" : "star")
                 .font(.system(size: 14))
@@ -116,7 +121,10 @@ struct NowPlayingCard: View {
     @ViewBuilder private var statusLine: some View {
         switch player.state {
         case .idle: Text("Idle").foregroundStyle(.secondary)
-        case .loading: HStack(spacing: 4) { ProgressView().controlSize(.mini); Text("Loading…") }.foregroundStyle(.secondary)
+        case .loading:
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini); Text("Loading…")
+            }.foregroundStyle(.secondary)
         case .playing: Label("Live", systemImage: "dot.radiowaves.left.and.right").foregroundStyle(.green)
         case .paused: Text("Paused").foregroundStyle(.secondary)
         }

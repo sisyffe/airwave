@@ -99,8 +99,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recentsItem.submenu = recentsMenu
         menu.addItem(recentsItem)
 
-        let toggleItem = NSMenuItem(title: AudioPlayer.shared.isPlaying ? "Pause" : "Play",
-                                    action: #selector(dockToggle), keyEquivalent: "")
+        let toggleItem = NSMenuItem(
+            title: AudioPlayer.shared.isPlaying ? "Pause" : "Play",
+            action: #selector(dockToggle), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
 
@@ -120,14 +121,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func showAbout() {
         let credits = NSAttributedString(
-            string: "A lightweight macOS audio player for YouTube livestreams and direct audio streams. Save favorites and control playback with macOS media controls.\n\nVibe coded with Lovable and Claude.",
+            string:
+                "A lightweight macOS audio player for YouTube livestreams and direct audio streams. Save favorites and control playback with macOS media controls.\n\nVibe coded with Lovable and Claude.",
             attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
         )
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
             .applicationName: AppInfo.name,
             .applicationVersion: AppInfo.version,
             .version: AppInfo.version,
-            .credits: credits
+            .credits: credits,
         ])
     }
 }

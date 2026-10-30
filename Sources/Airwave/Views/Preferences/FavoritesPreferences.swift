@@ -11,7 +11,8 @@ struct FavoritesPreferences: View {
 
     private var selectedBinding: Binding<Favorite>? {
         guard let id = selectedFavoriteID,
-              let index = favorites.items.firstIndex(where: { $0.id == id }) else { return nil }
+            let index = favorites.items.firstIndex(where: { $0.id == id })
+        else { return nil }
         let items = $favorites.items
         return Binding<Favorite>(
             get: { items.wrappedValue[index] },
@@ -48,11 +49,19 @@ struct FavoritesPreferences: View {
                 Divider()
 
                 HStack(spacing: 4) {
-                    Button { add() } label: { Image(systemName: "plus") }
-                        .help("Add a new favorite")
-                    Button { delete() } label: { Image(systemName: "minus") }
-                        .disabled(selectedFavoriteID == nil)
-                        .help("Delete the selected favorite")
+                    Button {
+                        add()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .help("Add a new favorite")
+                    Button {
+                        delete()
+                    } label: {
+                        Image(systemName: "minus")
+                    }
+                    .disabled(selectedFavoriteID == nil)
+                    .help("Delete the selected favorite")
                     Spacer()
                     Button("Import…") { importFavorites() }
                         .help("Merge favorites from a JSON file")

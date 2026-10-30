@@ -39,7 +39,8 @@ final class RecentsStore: ObservableObject {
     func record(name: String, url: String, thumbnail: Data? = nil) {
         guard !url.isEmpty else { return }
         var updated = items.filter { $0.url != url }
-        let thumb = thumbnail.flatMap { ThumbnailCache.canonical($0, for: url) }
+        let thumb =
+            thumbnail.flatMap { ThumbnailCache.canonical($0, for: url) }
             ?? items.first(where: { $0.url == url })?.thumbnail
         updated.insert(RecentTrack(name: name.isEmpty ? url : name, url: url, thumbnail: thumb), at: 0)
         if updated.count > maxCount { updated = Array(updated.prefix(maxCount)) }

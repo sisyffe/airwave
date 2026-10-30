@@ -12,11 +12,14 @@ struct GeneralPreferences: View {
             Toggle("Hotstart: play automatically when Airwave opens", isOn: $hotstart)
                 .help("Resumes the last played source")
             Toggle("Quit when the last window closes", isOn: $quitOnLastWindowClosed)
-                .help("On: closing the last window quits Airwave. Off: Airwave stays running and audio continues, like a standard macOS app. Use ⌘Q to quit.")
+                .help(
+                    "On: closing the last window quits Airwave. Off: Airwave stays running and audio continues, like a standard macOS app. Use ⌘Q to quit."
+                )
             Toggle("Open Airwave at login", isOn: $launchAtLogin)
                 .onChange(of: launchAtLogin) { _, enabled in
-                    do { enabled ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() }
-                    catch { launchAtLogin = !enabled }
+                    do { enabled ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() } catch {
+                        launchAtLogin = !enabled
+                    }
                 }
                 .help("Requires running Airwave as a bundled .app")
         }

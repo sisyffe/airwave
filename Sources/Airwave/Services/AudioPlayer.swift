@@ -63,19 +63,20 @@ final class AudioPlayer: ObservableObject {
         lastError = nil
         generation += 1
         let playGeneration = generation
-        let previous = Snapshot(url: sourceURL, title: self.title, artwork: artwork,
-                                item: player.currentItem, wasPlaying: isPlaying)
+        let previous = Snapshot(
+            url: sourceURL, title: self.title, artwork: artwork,
+            item: player.currentItem, wasPlaying: isPlaying)
         beginLoading(urlString: urlString, title: title, artwork: knownArtwork)
         do {
             let resolved = try await StreamResolver.resolve(urlString)
-            guard playGeneration == generation else { return } // user switched meanwhile
+            guard playGeneration == generation else { return }  // user switched meanwhile
             if title == nil, let resolvedTitle = resolved.title { self.title = resolvedTitle }
             start(resolved, urlString: urlString, previous: previous, playGeneration: playGeneration)
             await refreshArtwork(resolved, page: urlString, playGeneration: playGeneration)
         } catch {
-            guard playGeneration == generation else { return } // a newer link owns the UI
-            restore(previous) // keep whatever was playing…
-            lastError = error.localizedDescription // …and surface the problem as an alert
+            guard playGeneration == generation else { return }  // a newer link owns the UI
+            restore(previous)  // keep whatever was playing…
+            lastError = error.localizedDescription  // …and surface the problem as an alert
         }
     }
 
@@ -137,7 +138,7 @@ final class AudioPlayer: ObservableObject {
         if let item = snapshot.item, player.currentItem !== item {
             player.replaceCurrentItem(with: item)
             if item.duration.isIndefinite {
-                item.seek(to: .positiveInfinity, completionHandler: nil) // back to the live edge
+                item.seek(to: .positiveInfinity, completionHandler: nil)  // back to the live edge
             }
         }
         if snapshot.wasPlaying, snapshot.item != nil { player.play() }
@@ -218,10 +219,18 @@ final class AudioPlayer: ObservableObject {
 
     private func setupRemoteCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
-        commandCenter.playCommand.addTarget { [weak self] _ in Task { @MainActor in self?.resume() }; return .success }
-        commandCenter.pauseCommand.addTarget { [weak self] _ in Task { @MainActor in self?.pause() }; return .success }
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in Task { @MainActor in self?.toggle() }; return .success }
-        commandCenter.stopCommand.addTarget { [weak self] _ in Task { @MainActor in self?.stop() }; return .success }
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.resume() }; return .success
+        }
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.pause() }; return .success
+        }
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.toggle() }; return .success
+        }
+        commandCenter.stopCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.stop() }; return .success
+        }
         commandCenter.nextTrackCommand.isEnabled = false
         commandCenter.previousTrackCommand.isEnabled = false
         commandCenter.changePlaybackPositionCommand.isEnabled = false

@@ -23,15 +23,17 @@ struct ContentView: View {
                         .help("Play link")
                     TextField("YouTube link", text: $link)
                         .controlSize(.small)
-                        .help("Uses YouTubeKit. Paste a YouTube URL or a direct audio/HLS stream link; other website pages are not supported.")
+                        .help(
+                            "Uses YouTubeKit. Paste a YouTube URL or a direct audio/HLS stream link; other website pages are not supported."
+                        )
                         .focused($isLinkFocused)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(playLink)
                     Button(action: paste) {
                         Label("Paste", systemImage: "doc.on.clipboard")
                     }
-                        .controlSize(.small)
-                        .help("Paste a link from the clipboard")
+                    .controlSize(.small)
+                    .help("Paste a link from the clipboard")
                 }
             }
             .padding(EdgeInsets(top: 0, leading: 10, bottom: 8, trailing: 10))
@@ -101,7 +103,8 @@ struct ContentView: View {
 
     private func paste() {
         guard let pasted = NSPasteboard.general.string(forType: .string),
-              let firstToken = pasted.split(whereSeparator: \.isWhitespace).first else { return }
+            let firstToken = pasted.split(whereSeparator: \.isWhitespace).first
+        else { return }
         link = String(firstToken)
     }
 }

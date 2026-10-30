@@ -21,8 +21,10 @@ struct AddFavoriteSheet: View {
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Save") { favorites.add(name: name, url: url, thumbnail: thumbnail); dismiss() }
-                    .keyboardShortcut(.defaultAction)
+                Button("Save") {
+                    favorites.add(name: name, url: url, thumbnail: thumbnail); dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(12)

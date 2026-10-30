@@ -6,18 +6,21 @@ struct RecentsPreferences: View {
     @State private var confirmClear = false
 
     private var maxCountBinding: Binding<Double> {
-        Binding(get: { Double(recents.maxCount) },
-                set: { recents.maxCount = Int($0.rounded()) })
+        Binding(
+            get: { Double(recents.maxCount) },
+            set: { recents.maxCount = Int($0.rounded()) })
     }
 
     var body: some View {
         Form {
             LabeledContent("History size") {
                 HStack(spacing: 8) {
-                    Slider(value: maxCountBinding,
-                           in: Double(Prefs.minRecentMaxCount)...Double(Prefs.maxRecentMaxCount),
-                           step: 1)
-                        .frame(width: 160)
+                    Slider(
+                        value: maxCountBinding,
+                        in: Double(Prefs.minRecentMaxCount)...Double(Prefs.maxRecentMaxCount),
+                        step: 1
+                    )
+                    .frame(width: 160)
                     Text("\(recents.maxCount)")
                         .monospacedDigit()
                         .frame(width: 22, alignment: .trailing)
@@ -35,7 +38,7 @@ struct RecentsPreferences: View {
         .formStyle(.grouped)
         .confirmationDialog("Clear recent history?", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("Clear", role: .destructive) { recents.clear() }
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes all \(recents.items.count) recently played track(s).")
         }

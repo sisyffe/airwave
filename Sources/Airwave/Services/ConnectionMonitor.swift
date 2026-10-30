@@ -14,7 +14,8 @@ final class ConnectionMonitor: ObservableObject {
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
-            let quality: ConnectionQuality = path.status == .satisfied
+            let quality: ConnectionQuality =
+                path.status == .satisfied
                 ? (path.isExpensive ? .weak : .good)
                 : .offline
             Task { @MainActor in self?.quality = quality }

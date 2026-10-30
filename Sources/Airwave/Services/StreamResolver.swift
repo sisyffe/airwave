@@ -19,7 +19,9 @@ enum StreamResolver {
         var errorDescription: String? {
             switch self {
             case .invalidURL: return "That doesn't look like a valid link."
-            case .unsupported: return "Airwave uses YouTubeKit: paste a YouTube URL or a direct audio/HLS stream link. Other website pages are not supported."
+            case .unsupported:
+                return
+                    "Airwave uses YouTubeKit: paste a YouTube URL or a direct audio/HLS stream link. Other website pages are not supported."
             case .failed(let message): return "Couldn't get audio from this link.\n\(message)"
             }
         }
@@ -61,7 +63,8 @@ enum StreamResolver {
         }
         for candidate in candidates {
             if let (data, _) = try? await URLSession.shared.data(from: candidate),
-               let image = NSImage(data: data), let downscaled = image.downsized(maxSide: ThumbnailCache.maxSide) {
+                let image = NSImage(data: data), let downscaled = image.downsized(maxSide: ThumbnailCache.maxSide)
+            {
                 return downscaled
             }
         }
@@ -72,11 +75,13 @@ enum StreamResolver {
         var request = URLRequest(url: page, timeoutInterval: pageRequestTimeout)
         request.setValue(browserUserAgent, forHTTPHeaderField: "User-Agent")
         guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response.mimeType ?? "").contains("html") else { return nil }
+            (response.mimeType ?? "").contains("html")
+        else { return nil }
         let html = String(decoding: data.prefix(maxHTMLBytes), as: UTF8.self)
         guard let regex = try? NSRegularExpression(pattern: openGraphImagePattern, options: .caseInsensitive),
-              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              let matchRange = Range(match.range(at: 1), in: html) else { return nil }
+            let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+            let matchRange = Range(match.range(at: 1), in: html)
+        else { return nil }
         let imageURL = String(html[matchRange]).replacingOccurrences(of: "&amp;", with: "&")
         return URL(string: imageURL, relativeTo: page)?.absoluteURL
     }
@@ -96,7 +101,8 @@ enum StreamResolver {
                 return Resolved(streamURL: live.url, title: title, thumbnailURL: thumbnailURL)
             }
             let streams = try await youtube.streams
-            let audio = streams.filterAudioOnly().filter { $0.fileExtension == .m4a }.highestAudioBitrateStream()
+            let audio =
+                streams.filterAudioOnly().filter { $0.fileExtension == .m4a }.highestAudioBitrateStream()
                 ?? streams.filterVideoAndAudio().filter { $0.isNativelyPlayable }.lowestResolutionStream()
             guard let stream = audio else { throw ResolveError.failed("No playable audio stream found.") }
             return Resolved(streamURL: stream.url, title: title, thumbnailURL: thumbnailURL)

@@ -52,7 +52,8 @@ struct TitlebarAccessoryInstaller: NSViewRepresentable {
 
         func remove() {
             if let window, let accessory,
-               let index = window.titlebarAccessoryViewControllers.firstIndex(where: { $0 === accessory }) {
+                let index = window.titlebarAccessoryViewControllers.firstIndex(where: { $0 === accessory })
+            {
                 window.removeTitlebarAccessoryViewController(at: index)
             }
             window = nil

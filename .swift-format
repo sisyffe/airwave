@@ -1,0 +1,13 @@
+{
+  "indentation": {
+    "spaces": 4
+  },
+  "lineLength": 140,
+  "maximumBlankLines": 1,
+  "respectsExistingLineBreaks": true,
+  "rules": {
+    "AllPublicDeclarationsHaveDocumentation": false,
+    "BeginDocumentationCommentWithOneLineSummary": false,
+    "NoBlockComments": false
+  }
+}

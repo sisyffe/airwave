@@ -13,10 +13,11 @@ struct RecentsList: View {
         } else {
             List {
                 ForEach(recents.items) { track in
-                    RecentRow(track: track,
-                              isCurrent: player.sourceURL == track.url && player.isPlaying,
-                              onPlay: { play(track) },
-                              onRemove: { recents.remove(track) })
+                    RecentRow(
+                        track: track,
+                        isCurrent: player.sourceURL == track.url && player.isPlaying,
+                        onPlay: { play(track) },
+                        onRemove: { recents.remove(track) })
                 }
             }
             .listStyle(.plain)

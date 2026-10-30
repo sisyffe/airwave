@@ -15,17 +15,20 @@ struct FavoritesList: View {
         } else {
             List {
                 ForEach(favorites.items) { favorite in
-                    FavoriteRow(favorite: favorite,
-                                isCurrent: player.sourceURL == favorite.url && player.isPlaying,
-                                isRenaming: renamingID == favorite.id,
-                                renameText: $renameText,
-                                onPlay: { play(favorite) },
-                                onRenameStart: { renameText = favorite.name; renamingID = favorite.id },
-                                onRenameCommit: { newName in
-                                    favorites.rename(favorite, to: newName)
-                                    renamingID = nil
-                                },
-                                onDelete: { favorites.remove(favorite) })
+                    FavoriteRow(
+                        favorite: favorite,
+                        isCurrent: player.sourceURL == favorite.url && player.isPlaying,
+                        isRenaming: renamingID == favorite.id,
+                        renameText: $renameText,
+                        onPlay: { play(favorite) },
+                        onRenameStart: {
+                            renameText = favorite.name; renamingID = favorite.id
+                        },
+                        onRenameCommit: { newName in
+                            favorites.rename(favorite, to: newName)
+                            renamingID = nil
+                        },
+                        onDelete: { favorites.remove(favorite) })
                 }
                 .onMove { indices, newOffset in
                     favorites.items.move(fromOffsets: indices, toOffset: newOffset)
