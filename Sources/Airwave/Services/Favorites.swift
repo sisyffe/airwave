@@ -13,7 +13,8 @@ final class FavoritesStore: ObservableObject {
     private let key = Prefs.favorites
 
     init() {
-        items = UserDefaultsJSON.load([Favorite].self, from: key) ?? []
+        let stored = UserDefaultsJSON.load([Favorite].self, from: key) ?? []
+        items = ThumbnailCache.canonicalizing(stored, url: \.url, thumbnail: \.thumbnail)
     }
 
     func add(name: String, url: String, thumbnail: Data? = nil) {

@@ -32,7 +32,8 @@ final class RecentsStore: ObservableObject {
         let stored = UserDefaults.standard.object(forKey: Prefs.recentMaxCount) as? Int
         maxCount = min(max(stored ?? Prefs.defaultRecentMaxCount, Prefs.minRecentMaxCount), Prefs.maxRecentMaxCount)
         if let decoded = UserDefaultsJSON.load([RecentTrack].self, from: key) {
-            items = Array(decoded.prefix(maxCount))
+            let canonical = ThumbnailCache.canonicalizing(decoded, url: \.url, thumbnail: \.thumbnail)
+            items = Array(canonical.prefix(maxCount))
         }
     }
 
