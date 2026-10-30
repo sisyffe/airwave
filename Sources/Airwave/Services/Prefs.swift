@@ -13,11 +13,21 @@ enum Prefs {
     static let maxRecentMaxCount = 20
     static let quitOnLastWindowClosed = "quitOnLastWindowClosed"
     static let defaultQuitOnLastWindowClosed = true
+    static let replayOnTrackEnd = "replayOnTrackEnd"
+    static let defaultReplayOnTrackEnd = true
 
     static func shouldQuitAfterLastWindowClosed(using defaults: UserDefaults = .standard) -> Bool {
         guard defaults.object(forKey: quitOnLastWindowClosed) != nil else {
             return defaultQuitOnLastWindowClosed
         }
         return defaults.bool(forKey: quitOnLastWindowClosed)
+    }
+
+    /// Whether a finished finite track should replay instead of stopping.
+    static func shouldReplayOnTrackEnd(using defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.object(forKey: replayOnTrackEnd) != nil else {
+            return defaultReplayOnTrackEnd
+        }
+        return defaults.bool(forKey: replayOnTrackEnd)
     }
 }

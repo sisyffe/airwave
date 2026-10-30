@@ -28,6 +28,8 @@ final class AudioPlayer: ObservableObject {
     private let player = AVPlayer()
     private var statusObservation: NSKeyValueObservation?
     private var rateObservation: NSKeyValueObservation?
+    /// Fires when the current finite item reaches its end, to replay or stop it.
+    private var endOfTrackObserver: NSObjectProtocol?
     /// ICY metadata reader task for the current direct stream, if any.
     private var icyTask: Task<Void, Never>?
     /// Guards async playback work; stale work is dropped if the token is no
@@ -86,6 +88,7 @@ final class AudioPlayer: ObservableObject {
         streamTitle = nil
         icyTask?.cancel()
         icyTask = nil
+        removeEndOfTrackObserver()
         sourceURL = urlString
         self.title = title ?? urlString
         artwork = knownArtwork
@@ -101,6 +104,7 @@ final class AudioPlayer: ObservableObject {
                 self.itemFailed(item, previous: previous)
             }
         }
+        observeEndOfTrack(of: item)
         player.replaceCurrentItem(with: item)
         player.play()
         UserDefaults.standard.set(urlString, forKey: Prefs.lastURL)
@@ -135,18 +139,51 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func restore(_ snapshot: Snapshot) {
+        removeEndOfTrackObserver()
         if let item = snapshot.item, player.currentItem !== item {
             player.replaceCurrentItem(with: item)
             if item.duration.isIndefinite {
                 item.seek(to: .positiveInfinity, completionHandler: nil)  // back to the live edge
             }
         }
+        if let item = snapshot.item { observeEndOfTrack(of: item) }
         if snapshot.wasPlaying, snapshot.item != nil { player.play() }
         sourceURL = snapshot.url
         title = snapshot.title
         artwork = snapshot.artwork
         state = snapshot.item == nil ? .idle : (snapshot.wasPlaying ? .playing : .paused)
         updateNowPlaying()
+    }
+
+    /// Watches for the end of the current item. Only finite items post this
+    /// notification, so live streams are unaffected.
+    private func observeEndOfTrack(of item: AVPlayerItem) {
+        removeEndOfTrackObserver()
+        endOfTrackObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.trackDidReachEnd() }
+        }
+    }
+
+    private func removeEndOfTrackObserver() {
+        if let endOfTrackObserver {
+            NotificationCenter.default.removeObserver(endOfTrackObserver)
+            self.endOfTrackObserver = nil
+        }
+    }
+
+    /// Replays or stops a finished track, per the Playback setting.
+    private func trackDidReachEnd() {
+        guard let item = player.currentItem, !item.duration.isIndefinite else { return }
+        if Prefs.shouldReplayOnTrackEnd() {
+            player.seek(to: .zero)
+            player.play()
+        } else {
+            stop()
+        }
     }
 
     func resume() {
@@ -175,6 +212,7 @@ final class AudioPlayer: ObservableObject {
         // Invalidate in-flight work so a stream still resolving (or artwork still
         // downloading) cannot start playback or paint artwork after the stop.
         generation.invalidate()
+        removeEndOfTrackObserver()
         player.pause()
         player.replaceCurrentItem(with: nil)
         icyTask?.cancel()

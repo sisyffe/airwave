@@ -96,6 +96,12 @@ here. If you change behaviour that is not covered, note it in the PR/commit.
   state, and `stop()` must invalidate the generation.
 - Favorites and recents store thumbnails through `ThumbnailCache`, which owns
   the canonical size. Never store raw/undownscaled image data.
+- `stop()` clears `Prefs.lastURL` so hotstart does not restart a stopped stream.
+  The resume URL is written in `AudioPlayer.start()`.
+- When a finite item ends, `AudioPlayer` observes
+  `AVPlayerItem.didPlayToEndTimeNotification` and either replays it or stops,
+  per the `Prefs.replayOnTrackEnd` setting (default: replay). Live streams are
+  indefinite and never post that notification.
 
 ## Committing
 

@@ -49,6 +49,23 @@ do {
             && Prefs.defaultRecentMaxCount <= Prefs.maxRecentMaxCount,
         "recent-history bounds are ordered"
     )
+
+    check(
+        Prefs.shouldReplayOnTrackEnd(using: defaults),
+        "replay-on-track-end defaults to true when unset"
+    )
+
+    defaults.set(false, forKey: Prefs.replayOnTrackEnd)
+    check(
+        !Prefs.shouldReplayOnTrackEnd(using: defaults),
+        "replay-on-track-end respects an explicit false"
+    )
+
+    defaults.set(true, forKey: Prefs.replayOnTrackEnd)
+    check(
+        Prefs.shouldReplayOnTrackEnd(using: defaults),
+        "replay-on-track-end respects an explicit true"
+    )
 }
 
 // MARK: FavoritesIO

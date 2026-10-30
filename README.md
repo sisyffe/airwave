@@ -26,7 +26,8 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
   - Live network status indicator (`Connected`, `Weak connection`, `No network`) with an immediate, color-coded hover label, plus a quick Preferences button embedded directly in the window titlebar.
   - A right-click Dock menu with **Play/Pause** and a **Recent Tracks** submenu for quick playback.
   - Optional **Launch at Login** via `SMAppService`.
-- **Hotstart:** Optionally resume your last played stream automatically as soon as the app launches.
+- **End-of-Track Behavior:** Choose in **Settings → Playback** whether a finished track replays from the start (default) or stops. Applies to finite tracks only; live streams never end.
+- **Hotstart:** Optionally resume your last played stream automatically as soon as the app launches. Only a stream that was playing when Airwave closed is resumed — a stopped stream is not restarted.
 - **Background Playback Mode:** Choose whether closing the main window quits the application or keeps Airwave running silently in the background.
 
 ---
@@ -160,6 +161,7 @@ Sources/Airwave/
 │   └── Preferences/               # Settings window, one file per tab
 │       ├── PreferencesView.swift  # Tab container
 │       ├── GeneralPreferences.swift
+│       ├── PlaybackPreferences.swift
 │       ├── RecentsPreferences.swift
 │       ├── FavoritesPreferences.swift
 │       └── FavoriteEditor.swift   # Detail pane for editing one favorite
