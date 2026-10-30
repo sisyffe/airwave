@@ -24,7 +24,9 @@ swiftc -swift-version 5 \
   Sources/Airwave/Services/Prefs.swift \
   Sources/Airwave/Services/Favorite.swift \
   Sources/Airwave/Services/FavoritesIO.swift \
+  Sources/Airwave/Services/ThumbnailCache.swift \
   Sources/Airwave/Utilities/UserDefaultsJSON.swift \
+  Sources/Airwave/Utilities/NSImage+Downsizing.swift \
   -o "$TMP/smoke"
 "$TMP/smoke"
 

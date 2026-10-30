@@ -52,7 +52,7 @@ enum StreamResolver {
         }
         for c in candidates {
             if let (data, _) = try? await URLSession.shared.data(from: c),
-               let img = NSImage(data: data), let small = img.downsized(maxSide: 256) {
+               let img = NSImage(data: data), let small = img.downsized(maxSide: ThumbnailCache.maxSide) {
                 return small
             }
         }

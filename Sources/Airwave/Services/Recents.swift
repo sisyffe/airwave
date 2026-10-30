@@ -1,5 +1,4 @@
 import Foundation
-import AppKit
 
 struct RecentTrack: Codable, Hashable, Identifiable {
     var id = UUID()
@@ -40,29 +39,22 @@ final class RecentsStore: ObservableObject {
     func record(name: String, url: String, thumbnail: Data? = nil) {
         guard !url.isEmpty else { return }
         var new = items.filter { $0.url != url }
-        let thumb = thumbnail ?? smallThumbnail(for: url)
+        let thumb = thumbnail.flatMap { ThumbnailCache.canonical($0, for: url) }
+            ?? items.first(where: { $0.url == url })?.thumbnail
         new.insert(RecentTrack(name: name.isEmpty ? url : name, url: url, thumbnail: thumb), at: 0)
         if new.count > maxCount { new = Array(new.prefix(maxCount)) }
         items = new
     }
 
-    /// Store the latest (downscaled) thumbnail for a recent track.
+    /// Store the latest thumbnail for a recent track (refreshed on every play).
     func setThumbnail(_ data: Data, for url: String) {
         guard let i = items.firstIndex(where: { $0.url == url }) else { return }
-        let small = NSImage(data: data).flatMap { $0.downsized(maxSide: 96) } ?? data
-        guard items[i].thumbnail != small else { return }
-        items[i].thumbnail = small
+        guard let canonical = ThumbnailCache.canonical(data, for: url), items[i].thumbnail != canonical else { return }
+        items[i].thumbnail = canonical
     }
 
     func remove(_ track: RecentTrack) { items.removeAll { $0.id == track.id } }
     func clear() { items = [] }
-
-    /// A previously-known thumbnail for the same URL, downscaled for compact storage.
-    private func smallThumbnail(for url: String) -> Data? {
-        guard let data = items.first(where: { $0.url == url })?.thumbnail else { return nil }
-        guard let img = NSImage(data: data) else { return data }
-        return img.downsized(maxSide: 96) ?? data
-    }
 
     private func save() {
         UserDefaultsJSON.save(items, to: key)

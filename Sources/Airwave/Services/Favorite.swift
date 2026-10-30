@@ -23,8 +23,9 @@ final class FavoritesStore: ObservableObject {
 
     /// Store the latest thumbnail for a favorite (refreshed on every play).
     func setThumbnail(_ data: Data, for url: String) {
-        guard let i = items.firstIndex(where: { $0.url == url }), items[i].thumbnail != data else { return }
-        items[i].thumbnail = data
+        guard let i = items.firstIndex(where: { $0.url == url }) else { return }
+        guard let canonical = ThumbnailCache.canonical(data, for: url), items[i].thumbnail != canonical else { return }
+        items[i].thumbnail = canonical
     }
 
     func favorite(for url: String) -> Favorite? { items.first { $0.url == url } }
