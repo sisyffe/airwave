@@ -65,6 +65,22 @@ final class AudioPlayer: ObservableObject {
         let playGeneration = generation
         let previous = Snapshot(url: sourceURL, title: self.title, artwork: artwork,
                                 item: player.currentItem, wasPlaying: isPlaying)
+        beginLoading(urlString: urlString, title: title, artwork: knownArtwork)
+        do {
+            let resolved = try await StreamResolver.resolve(urlString)
+            guard playGeneration == generation else { return } // user switched meanwhile
+            if title == nil, let resolvedTitle = resolved.title { self.title = resolvedTitle }
+            start(resolved, urlString: urlString, previous: previous, playGeneration: playGeneration)
+            await refreshArtwork(resolved, page: urlString, playGeneration: playGeneration)
+        } catch {
+            guard playGeneration == generation else { return } // a newer link owns the UI
+            restore(previous) // keep whatever was playing…
+            lastError = error.localizedDescription // …and surface the problem as an alert
+        }
+    }
+
+    /// Resets published state for a new link before its stream is resolved.
+    private func beginLoading(urlString: String, title: String?, artwork knownArtwork: Data?) {
         state = .loading
         streamTitle = nil
         icyTask?.cancel()
@@ -73,39 +89,40 @@ final class AudioPlayer: ObservableObject {
         self.title = title ?? urlString
         artwork = knownArtwork
         updateNowPlaying()
-        do {
-            let resolved = try await StreamResolver.resolve(urlString)
-            guard playGeneration == generation else { return } // user switched meanwhile
-            if title == nil, let resolvedTitle = resolved.title { self.title = resolvedTitle }
-            // Apply stream-specific headers when supplied by the resolver.
-            var options: [String: Any] = [:]
-            if !resolved.headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = resolved.headers }
-            let asset = AVURLAsset(url: resolved.streamURL, options: options)
-            let item = AVPlayerItem(asset: asset)
-            statusObservation = item.observe(\.status) { [weak self] item, _ in
-                Task { @MainActor in
-                    guard let self, item.status == .failed, self.generation == playGeneration else { return }
-                    self.itemFailed(item, previous: previous)
-                }
+    }
+
+    /// Swaps in the resolved stream, starts playback and wires up failure handling.
+    private func start(_ resolved: StreamResolver.Resolved, urlString: String, previous: Snapshot, playGeneration: Int) {
+        let item = makePlayerItem(for: resolved)
+        statusObservation = item.observe(\.status) { [weak self] item, _ in
+            Task { @MainActor in
+                guard let self, item.status == .failed, self.generation == playGeneration else { return }
+                self.itemFailed(item, previous: previous)
             }
-            player.replaceCurrentItem(with: item)
-            player.play()
-            UserDefaults.standard.set(urlString, forKey: Prefs.lastURL)
-            RecentsStore.shared.record(name: self.title, url: urlString, thumbnail: artwork)
+        }
+        player.replaceCurrentItem(with: item)
+        player.play()
+        UserDefaults.standard.set(urlString, forKey: Prefs.lastURL)
+        RecentsStore.shared.record(name: self.title, url: urlString, thumbnail: artwork)
+        updateNowPlaying()
+        startICYIfEligible(resolved, playGeneration: playGeneration)
+    }
+
+    private func makePlayerItem(for resolved: StreamResolver.Resolved) -> AVPlayerItem {
+        // Apply stream-specific headers when supplied by the resolver.
+        var options: [String: Any] = [:]
+        if !resolved.headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = resolved.headers }
+        return AVPlayerItem(asset: AVURLAsset(url: resolved.streamURL, options: options))
+    }
+
+    /// Refreshes the artwork even when a cached one was supplied (from
+    /// favorites/recents), so covers stay up to date on every play.
+    private func refreshArtwork(_ resolved: StreamResolver.Resolved, page: String, playGeneration: Int) async {
+        let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: page)
+        if playGeneration == generation, let fetched, fetched != artwork {
+            artwork = fetched
             updateNowPlaying()
-            startICYIfEligible(resolved, playGeneration: playGeneration)
-            // Always refresh the artwork, even when a cached one was supplied
-            // (from favorites/recents), so covers stay up to date on every play.
-            let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: urlString)
-            if playGeneration == generation, let fetched, fetched != artwork {
-                artwork = fetched
-                updateNowPlaying()
-                NotificationCenter.default.post(name: .airwaveArtwork, object: urlString, userInfo: ["data": fetched])
-            }
-        } catch {
-            guard playGeneration == generation else { return } // a newer link owns the UI
-            restore(previous) // keep whatever was playing…
-            lastError = error.localizedDescription // …and surface the problem as an alert
+            NotificationCenter.default.post(name: .airwaveArtwork, object: page, userInfo: ["data": fetched])
         }
     }
 
