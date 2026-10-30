@@ -26,6 +26,9 @@ struct TitlebarAccessoryInstaller: NSViewRepresentable {
             self.openSettings = openSettings
         }
 
+        /// Attaches the accessory to `window`, moving it if the anchor view was
+        /// previously in a different window. Idempotent: re-installing into the
+        /// same window keeps the existing accessory instead of adding a second one.
         func install(in window: NSWindow) {
             guard self.window !== window || accessory == nil else { return }
             remove()
@@ -46,10 +49,12 @@ struct TitlebarAccessoryInstaller: NSViewRepresentable {
             self.hostingView = hostingView
         }
 
+        /// Rebuilds the hosted view so it reflects the current environment.
         func update() {
             hostingView?.rootView = TitlebarButtons(openSettings: openSettings)
         }
 
+        /// Detaches the accessory from its window and forgets all references.
         func remove() {
             if let window, let accessory,
                 let index = window.titlebarAccessoryViewControllers.firstIndex(where: { $0 === accessory })
