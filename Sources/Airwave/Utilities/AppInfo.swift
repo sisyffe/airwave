@@ -4,10 +4,15 @@ import Foundation
 /// metadata and outbound network requests.
 enum AppInfo {
     static let name = "Airwave"
-    static let version = "1.1.0"
 
-    /// User-Agent sent when probing stream/ICY endpoints. Note: this is kept as
-    /// "Airwave/1.1" to preserve existing request behavior even though the
-    /// bundle version is "1.1.0".
-    static let userAgent = "Airwave/1.1"
+    /// Bundle version, read from the packaged app's `Info.plist`. Falls back to
+    /// `"dev"` when running unbundled (for example `swift run`). The value is
+    /// written into the bundle by the `bundle` plugin from the root `VERSION`
+    /// file, which is the single source of truth for the version.
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+    }
+
+    /// User-Agent sent when probing stream/ICY endpoints.
+    static var userAgent: String { "\(name)/\(version)" }
 }
