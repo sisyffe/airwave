@@ -138,5 +138,6 @@ toolchain (they require full Xcode). `swift test` fails with
 ### Manual checks
 - `./make-app.sh` produced `dist/Airwave.app` with `Contents/MacOS/Airwave`,
   `Info.plist` and `AppIcon.icns`.
-- The app was not launched interactively (headless environment); GUI flows
-  (playback, title bar, settings) were not manually exercised.
+- The release binary was launched for a few seconds; it started and stayed
+  running with no crash and no error output. Interactive GUI flows (playback,
+  title bar, settings) were not exercised because the environment is headless.
