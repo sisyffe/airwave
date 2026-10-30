@@ -55,7 +55,7 @@ enum ICYMetadata {
                 // Skip `metadataInterval` bytes of audio.
                 var bytesSkipped = 0
                 while bytesSkipped < metadataInterval {
-                    guard try await iterator.next() != nil else { return }
+                    guard !Task.isCancelled, try await iterator.next() != nil else { return }
                     bytesSkipped += 1
                 }
                 // Length byte, in 16-byte units (0 = no metadata this block).
@@ -67,7 +67,7 @@ enum ICYMetadata {
                 metadataBytes.reserveCapacity(metadataLength)
                 var bytesRead = 0
                 while bytesRead < metadataLength {
-                    guard let byte = try await iterator.next() else { return }
+                    guard !Task.isCancelled, let byte = try await iterator.next() else { return }
                     metadataBytes.append(byte)
                     bytesRead += 1
                 }
@@ -80,7 +80,9 @@ enum ICYMetadata {
         }
     }
 
-    private static func parseStreamTitle(_ bytes: [UInt8]) -> String? {
+    /// Extracts the value of `StreamTitle='…'` from one ICY metadata block.
+    /// Internal (not private) so it can be covered by the smoke test.
+    static func parseStreamTitle(_ bytes: [UInt8]) -> String? {
         let text = String(decoding: bytes, as: UTF8.self)
         guard let start = text.range(of: "StreamTitle='") else { return nil }
         let after = text[start.upperBound...]
