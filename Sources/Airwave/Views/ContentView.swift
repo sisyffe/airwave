@@ -106,5 +106,6 @@ struct ContentView: View {
             let firstToken = pasted.split(whereSeparator: \.isWhitespace).first
         else { return }
         link = String(firstToken)
+        playLink() // Automatic
     }
 }
