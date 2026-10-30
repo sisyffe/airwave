@@ -32,8 +32,7 @@ final class RecentsStore: ObservableObject {
     private init() {
         let stored = UserDefaults.standard.object(forKey: Prefs.recentMaxCount) as? Int
         maxCount = min(max(stored ?? Prefs.defaultRecentMaxCount, Prefs.minRecentMaxCount), Prefs.maxRecentMaxCount)
-        if let data = UserDefaults.standard.data(forKey: key),
-           let decoded = try? JSONDecoder().decode([RecentTrack].self, from: data) {
+        if let decoded = UserDefaultsJSON.load([RecentTrack].self, from: key) {
             items = Array(decoded.prefix(maxCount))
         }
     }
@@ -66,8 +65,6 @@ final class RecentsStore: ObservableObject {
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(items) {
-            UserDefaults.standard.set(data, forKey: key)
-        }
+        UserDefaultsJSON.save(items, to: key)
     }
 }

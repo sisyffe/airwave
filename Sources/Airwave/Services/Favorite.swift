@@ -10,13 +10,10 @@ struct Favorite: Identifiable, Codable, Hashable {
 @MainActor
 final class FavoritesStore: ObservableObject {
     @Published var items: [Favorite] = [] { didSet { save() } }
-    private let key = "favorites"
+    private let key = Prefs.favorites
 
     init() {
-        if let data = UserDefaults.standard.data(forKey: key),
-           let decoded = try? JSONDecoder().decode([Favorite].self, from: data) {
-            items = decoded
-        }
+        items = UserDefaultsJSON.load([Favorite].self, from: key) ?? []
     }
 
     func add(name: String, url: String, thumbnail: Data? = nil) {
@@ -41,8 +38,6 @@ final class FavoritesStore: ObservableObject {
     func contains(url: String) -> Bool { items.contains { $0.url == url } }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(items) {
-            UserDefaults.standard.set(data, forKey: key)
-        }
+        UserDefaultsJSON.save(items, to: key)
     }
 }
