@@ -78,15 +78,20 @@ Make sure the Swift source files are placed inside `Sources/Airwave/` as expecte
 Airwave/
 ├── Package.swift
 ├── make-app.sh
+├── smoke-test.sh
+├── .swift-format
 ├── LICENSE
 ├── Resources/
 │   ├── AppIcon.icns
 │   └── screenshot.png
+├── Tests/
+│   └── Smoke/
 └── Sources/
     └── Airwave/
         ├── AirwaveApp.swift
         ├── Components/
         ├── Services/
+        ├── Utilities/
         └── Views/
 ```
 
@@ -113,33 +118,55 @@ If you only want to compile or run the executable directly via SwiftPM during de
 swift build -c release
 ```
 
+### Testing
+
+There is no XCTest/Swift Testing target because those require a full Xcode install. Instead, `smoke-test.sh` builds the app and compiles a small harness against the Foundation-only logic (preferences, favorites import/export) to check it still behaves as expected:
+
+```bash
+./smoke-test.sh
+```
+
+Formatting is handled by the bundled `swift format`; run `swift format lint --recursive Sources` to check it.
+
 ---
 
 ## Architecture & Code Design
 
-Airwave is written in modern Swift with strict separation of concerns across three main layers:
+Airwave is written in modern Swift with strict separation of concerns across four layers:
 
 ```text
 Sources/Airwave/
 ├── AirwaveApp.swift               # App entry point, WindowGroup, Playback menu commands & AppDelegate
-├── Services/
+├── Services/                      # Stateful services and persistence
 │   ├── AudioPlayer.swift          # @MainActor AVPlayer wrapper, generation-safe async loading & MediaPlayer integration
 │   ├── StreamResolver.swift       # Direct stream vs. YouTubeKit extraction & OpenGraph/favicon artwork fetching
 │   ├── ICYMetadata.swift          # Icecast/Shoutcast inline metadata reader (station name & current song)
+│   ├── ThumbnailCache.swift       # Canonical, shared thumbnail downscaling for favorites & recents
+│   ├── ConnectionMonitor.swift    # NWPathMonitor wrapper publishing connection quality
 │   ├── Favorite.swift             # Codable Favorite model & UserDefaults-backed FavoritesStore
 │   ├── FavoritesIO.swift          # Lossless JSON import/export & merge for favorites
 │   ├── Recents.swift              # UserDefaults-backed RecentsStore (configurable 1–20 history)
-│   └── Prefs.swift                # Centralized UserDefaults keys
+│   └── Prefs.swift                # Centralized UserDefaults keys & defaults
+├── Utilities/                     # Small, dependency-free helpers
+│   ├── AppInfo.swift              # App name & version constants
+│   ├── NSImage+Downsizing.swift   # PNG downscaling used by thumbnails
+│   └── UserDefaultsJSON.swift     # Shared JSON-in-UserDefaults persistence
 ├── Views/
 │   ├── ContentView.swift          # Main window layout (NowPlayingCard, URL bar, list with bottom Favorites/Recents switcher)
-│   └── PreferencesView.swift      # Settings window (General, Recents & master–detail Favorites tabs)
-└── Components/
+│   └── Preferences/               # Settings window, one file per tab
+│       ├── PreferencesView.swift  # Tab container
+│       ├── GeneralPreferences.swift
+│       ├── RecentsPreferences.swift
+│       ├── FavoritesPreferences.swift
+│       └── FavoriteEditor.swift   # Detail pane for editing one favorite
+└── Components/                    # Reusable SwiftUI views
     ├── NowPlayingCard.swift       # Playback header with status pill, title/song, transport & volume slider
     ├── FavoritesList.swift        # Interactive list with inline rename & native drag-to-reorder
     ├── RecentsList.swift          # Recently played tracks with quick replay
-    ├── TitlebarAccessory.swift    # AppKit NSTitlebarAccessoryViewController + NWPathMonitor network indicator
+    ├── TitlebarButtons.swift      # Network indicator + settings gear shown in the title bar
+    ├── TitlebarAccessoryInstaller.swift  # AppKit NSTitlebarAccessoryViewController bridge
     ├── AddFavoriteSheet.swift     # Modal sheet for naming a newly saved favorite stream
-    └── Thumb.swift                # Reusable rounded thumbnail view with fallback icon
+    └── Thumbnail.swift            # Reusable rounded thumbnail view with fallback icon
 ```
 
 ### Key Design Highlights
@@ -149,7 +176,8 @@ Sources/Airwave/
   2. For YouTube URLs, queries `YouTubeKit` locally and selects the best stream in priority order: **HLS live stream** → **highest-bitrate M4A audio-only stream** → **lowest-resolution natively playable muxed stream**.
   3. Fetches artwork asynchronously (up to 300 KB of HTML inspected for `og:image` / `twitter:image` meta tags, falling back to Google's S2 favicon service) and downscales images to 256 px PNG data for compact storage.
 - **ICY Metadata Reader (`ICYMetadata`):** For direct radio streams, a second, audio-less connection parses inline `icy-metaint` blocks to surface the station name and current song without touching the playback pipeline; the task is generation-guarded and cancelled on stop or track change.
-- **Lightweight Persistence (`FavoritesStore`, `RecentsStore` & `Prefs`):** Favorites, recent history, and cached thumbnail `Data` are serialized as JSON in `UserDefaults`, keeping the app completely self-contained with zero external database dependencies.
+- **Shared Thumbnails (`ThumbnailCache`):** Favorites and recents keep their own `thumbnail` field (so the JSON format is stable), but every image is downscaled through one shared cache. Both lists therefore store identical bytes for the same link instead of each picking its own size.
+- **Lightweight Persistence (`FavoritesStore`, `RecentsStore`, `UserDefaultsJSON` & `Prefs`):** Favorites, recent history, and cached thumbnail `Data` are serialized as JSON in `UserDefaults` via a small shared helper, keeping the app completely self-contained with zero external database dependencies.
 
 ---
 
