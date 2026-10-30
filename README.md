@@ -5,7 +5,7 @@
 ![Platform: macOS 14.0+](https://img.shields.io/badge/platform-macOS%2014.0%2B-blue.svg)
 ![Swift 5.9+](https://img.shields.io/badge/swift-5.9%2B-orange.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
-![Version: 1.1.0](https://img.shields.io/badge/version-1.1.0-informational.svg)
+![Version: 1.1.1](https://img.shields.io/badge/version-1.1.1-informational.svg)
 
 Airwave lets you listen to live internet radio, direct audio streams, and YouTube videos or live broadcasts without keeping a heavy web browser tab open. Designed exclusively for macOS Sonoma and later, it integrates seamlessly with system media controls, the Control Center Now Playing widget, and keyboard shortcuts.
 
@@ -42,6 +42,7 @@ Airwave is intentionally lightweight and relies on native `AVFoundation` playbac
 ### Limitations (What Does Not Work)
 - **Not a Universal Website Extractor:** Airwave cannot extract audio from arbitrary websites, radio station web portals, SoundCloud, Twitch, Mixcloud, or Spotify web pages. If you want to listen to an internet radio station (other than YouTube), you must provide its **direct stream URL** (e.g., an Icecast/Shoutcast `.mp3`/`.aac` mountpoint or `.m3u8` HLS manifest), not the URL of the station's homepage.
 - **DRM, Age-Restricted, or Private YouTube Content:** Videos requiring authentication, cookies, age verification, or Widevine DRM cannot be resolved by `YouTubeKit`.
+- **PLS Playlists:** `.pls` playlist files are **not** supported — `AVPlayer` cannot resolve them. Use the direct stream URL inside the playlist (e.g. the `.mp3`/`.aac` mountpoint) instead.
 - **YouTube API Changes:** Because YouTube frequently updates its internal player formats, stream extraction may occasionally require updating the `YouTubeKit` dependency.
 
 ---
@@ -77,9 +78,11 @@ Make sure the Swift source files are placed inside `Sources/Airwave/` as expecte
 ```text
 Airwave/
 ├── Package.swift
-├── make-app.sh
+├── VERSION                 # single source of truth for the app version
 ├── smoke-test.sh
 ├── .swift-format
+├── Plugins/
+│   └── BundleApp/          # `swift package bundle` command plugin
 ├── LICENSE
 ├── Resources/
 │   ├── AppIcon.icns
@@ -97,36 +100,36 @@ Airwave/
 
 ### Build & Package `Airwave.app`
 
-The repository includes a turnkey build script (`make-app.sh`) that compiles a release binary via Swift Package Manager, generates the macOS `.app` bundle structure (`dist/Airwave.app`), writes the `Info.plist` (including `NSAllowsArbitraryLoads` so non-HTTPS radio streams can play), copies `Resources/AppIcon.icns` if present, and applies an ad-hoc code signature.
+Airwave is a plain Swift package — no Xcode project. Packaging is a native SwiftPM command plugin, `bundle`, defined in `Plugins/BundleApp`. It reads the version from the root `VERSION` file, builds the `.app` bundle at `dist/Airwave.app`, writes the `Info.plist` (including `NSAllowsArbitraryLoads` so non-HTTPS radio streams can play), copies `Resources/AppIcon.icns` if present, and applies an ad-hoc code signature.
+
+The plugin packages the binary, so build first, then bundle:
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/Sisyffe/Airwave.git
 cd Airwave
 
-# 2. Run the packaging script
-chmod +x make-app.sh
-./make-app.sh
+# 2. Build the release binary
+swift build -c release
 
-# 3. Launch the built application
+# 3. Package the app (the plugin writes to dist/, so it needs permission)
+swift package --allow-writing-to-package-directory bundle
+
+# 4. Launch the built application
 open dist/Airwave.app
 ```
 
-If you only want to compile or run the executable directly via SwiftPM during development:
-
-```bash
-swift build -c release
-```
+The app version is single-sourced from `VERSION`: the plugin writes it into `Info.plist`, and the app reads it back at runtime from `CFBundleShortVersionString`. Bump `VERSION` to change the version everywhere.
 
 ### Testing
 
-There is no XCTest/Swift Testing target because those require a full Xcode install. Instead, `smoke-test.sh` builds the app and compiles a small harness against the Foundation-only logic (preferences, favorites import/export) to check it still behaves as expected:
+There is no XCTest/Swift Testing target because those require a full Xcode install; the project is built with the Command Line Tools only. Instead, `smoke-test.sh` builds the app, runs `swift format lint`, and compiles a small harness (`Tests/Smoke/main.swift`) against the Foundation-only logic — preferences, favorites import/export, the playback generation gate and ICY metadata parsing — asserting its behaviour:
 
 ```bash
 ./smoke-test.sh
 ```
 
-Formatting is handled by the bundled `swift format`; run `swift format lint --recursive Sources` to check it.
+To cover new pure logic, add checks to `Tests/Smoke/main.swift` and, if needed, add the source file to the `swiftc` list in `smoke-test.sh`. Logic that needs AppKit, AVFoundation or the network cannot go here.
 
 ---
 
@@ -143,12 +146,13 @@ Sources/Airwave/
 │   ├── ICYMetadata.swift          # Icecast/Shoutcast inline metadata reader (station name & current song)
 │   ├── ThumbnailCache.swift       # Canonical, shared thumbnail downscaling for favorites & recents
 │   ├── ConnectionMonitor.swift    # NWPathMonitor wrapper publishing connection quality
-│   ├── Favorite.swift             # Codable Favorite model & UserDefaults-backed FavoritesStore
+│   ├── PlaybackGeneration.swift   # Token gate that discards stale/superseded async playback work
+│   ├── Favorites.swift            # Codable Favorite model & UserDefaults-backed FavoritesStore
 │   ├── FavoritesIO.swift          # Lossless JSON import/export & merge for favorites
 │   ├── Recents.swift              # UserDefaults-backed RecentsStore (configurable 1–20 history)
 │   └── Prefs.swift                # Centralized UserDefaults keys & defaults
 ├── Utilities/                     # Small, dependency-free helpers
-│   ├── AppInfo.swift              # App name & version constants
+│   ├── AppInfo.swift              # App name & bundle version (read from Info.plist)
 │   ├── NSImage+Downsizing.swift   # PNG downscaling used by thumbnails
 │   └── UserDefaultsJSON.swift     # Shared JSON-in-UserDefaults persistence
 ├── Views/
@@ -170,7 +174,7 @@ Sources/Airwave/
 ```
 
 ### Key Design Highlights
-- **Concurrency & Generation-Safe Playback (`AudioPlayer`):** Annotated with `@MainActor` and conforming to `ObservableObject`, `AudioPlayer` uses an internal `generation` counter (`UInt64`). If a user rapidly switches streams while one is still resolving, stale asynchronous tasks automatically abort without corrupting the active player state. If a stream fails to resolve, the player gracefully restores the previous stream and state.
+- **Concurrency & Generation-Safe Playback (`AudioPlayer` + `PlaybackGeneration`):** Annotated with `@MainActor` and conforming to `ObservableObject`, `AudioPlayer` guards asynchronous work with a small `PlaybackGeneration` token gate. If a user rapidly switches streams while one is still resolving — or stops playback — stale async work is discarded without corrupting the active player state. If a stream fails to resolve, the player gracefully restores the previous stream and state.
 - **Stream Resolution Pipeline (`StreamResolver`):**
   1. Validates `http`/`https` schemes and checks whether the URL extension matches known direct audio formats.
   2. For YouTube URLs, queries `YouTubeKit` locally and selects the best stream in priority order: **HLS live stream** → **highest-bitrate M4A audio-only stream** → **lowest-resolution natively playable muxed stream**.
