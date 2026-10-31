@@ -2,10 +2,10 @@
 
 **A lightweight, native macOS audio stream and YouTube audio player built with SwiftUI.**
 
-![Platform: macOS 13.0+](https://img.shields.io/badge/platform-macOS%2014.0%2B-blue.svg)
+![Platform: macOS 13.0+](https://img.shields.io/badge/platform-macOS%2013.0%2B-blue.svg)
 ![Swift 5.9+](https://img.shields.io/badge/swift-5.9%2B-orange.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
-![Version: 1.1.1](https://img.shields.io/badge/version-1.1.1-informational.svg)
+![Version: 1.1.2](https://img.shields.io/badge/version-1.1.1-informational.svg)
 
 Airwave lets you listen to live internet radio, direct audio streams, and YouTube videos or live broadcasts without keeping a heavy web browser tab open. Designed exclusively for macOS Sonoma and later, it integrates seamlessly with system media controls, the Control Center Now Playing widget, and keyboard shortcuts.
 
