@@ -2,7 +2,7 @@
 
 **A lightweight, native macOS audio stream and YouTube audio player built with SwiftUI.**
 
-![Platform: macOS 14.0+](https://img.shields.io/badge/platform-macOS%2014.0%2B-blue.svg)
+![Platform: macOS 13.0+](https://img.shields.io/badge/platform-macOS%2014.0%2B-blue.svg)
 ![Swift 5.9+](https://img.shields.io/badge/swift-5.9%2B-orange.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
 ![Version: 1.1.1](https://img.shields.io/badge/version-1.1.1-informational.svg)
@@ -70,7 +70,7 @@ Pre-compiled versions of `Airwave.app` are signed using an **ad-hoc local signat
 ## Building from Source
 
 ### Requirements
-- **macOS 14.0 (Sonoma)** or later
+- **macOS 13.0 (Sonoma)** or later
 - **Xcode 15.0+** or **Swift 5.9+** Command Line Tools
 
 ### Repository Layout Note

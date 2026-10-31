@@ -16,7 +16,7 @@ struct GeneralPreferences: View {
                     "On: closing the last window quits Airwave. Off: Airwave stays running and audio continues, like a standard macOS app. Use ⌘Q to quit."
                 )
             Toggle("Open Airwave at login", isOn: $launchAtLogin)
-                .onChange(of: launchAtLogin) { _, enabled in
+                .onChange(of: launchAtLogin) { enabled in
                     do { enabled ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() } catch {
                         launchAtLogin = !enabled
                     }

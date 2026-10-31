@@ -4,8 +4,6 @@ import AppKit
 /// Installs the SwiftUI controls in the window's actual title bar. AppKit owns
 /// their vertical alignment and keeps them at the trailing edge on resize.
 struct TitlebarAccessoryInstaller: NSViewRepresentable {
-    @Environment(\.openSettings) private var openSettings
-
     final class AnchorView: NSView {
         var onWindowChange: ((NSWindow?) -> Void)?
 
@@ -17,14 +15,9 @@ struct TitlebarAccessoryInstaller: NSViewRepresentable {
 
     @MainActor
     final class Coordinator {
-        var openSettings: OpenSettingsAction
         private weak var window: NSWindow?
         private var accessory: NSTitlebarAccessoryViewController?
         private var hostingView: NSHostingView<TitlebarButtons>?
-
-        init(openSettings: OpenSettingsAction) {
-            self.openSettings = openSettings
-        }
 
         /// Attaches the accessory to `window`, moving it if the anchor view was
         /// previously in a different window. Idempotent: re-installing into the
@@ -35,7 +28,7 @@ struct TitlebarAccessoryInstaller: NSViewRepresentable {
             // Keep the closed main window available for Dock reopening when quit is disabled.
             window.isReleasedWhenClosed = false
 
-            let hostingView = NSHostingView(rootView: TitlebarButtons(openSettings: openSettings))
+            let hostingView = NSHostingView(rootView: TitlebarButtons(openSettings: TitlebarAccessoryInstaller.showSettings))
             hostingView.sizingOptions = [.intrinsicContentSize]
             hostingView.setFrameSize(hostingView.fittingSize)
 
@@ -51,7 +44,7 @@ struct TitlebarAccessoryInstaller: NSViewRepresentable {
 
         /// Rebuilds the hosted view so it reflects the current environment.
         func update() {
-            hostingView?.rootView = TitlebarButtons(openSettings: openSettings)
+            hostingView?.rootView = TitlebarButtons(openSettings: TitlebarAccessoryInstaller.showSettings)
         }
 
         /// Detaches the accessory from its window and forgets all references.
@@ -68,7 +61,7 @@ struct TitlebarAccessoryInstaller: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(openSettings: openSettings)
+        Coordinator()
     }
 
     func makeNSView(context: Context) -> AnchorView {
@@ -85,12 +78,15 @@ struct TitlebarAccessoryInstaller: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: AnchorView, context: Context) {
-        context.coordinator.openSettings = openSettings
         context.coordinator.update()
     }
 
     static func dismantleNSView(_ nsView: AnchorView, coordinator: Coordinator) {
         nsView.onWindowChange = nil
         coordinator.remove()
+    }
+
+    private static func showSettings() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }

@@ -71,7 +71,7 @@ private struct FavoriteRow: View {
                     .controlSize(.small)
                     .focused($isRenameFocused)
                     .onSubmit { onRenameCommit(renameText) }
-                    .onChange(of: isRenameFocused) { _, focused in
+                    .onChange(of: isRenameFocused) { focused in
                         if !focused { onRenameCommit(renameText) }
                     }
                     .task { isRenameFocused = true }

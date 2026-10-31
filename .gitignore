@@ -64,3 +64,4 @@ fastlane/test_output
 # Custom below
 .DS_Store
 dist/*
+.vscode

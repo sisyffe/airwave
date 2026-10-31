@@ -3,7 +3,7 @@ import SwiftUI
 /// Connection quality icon + settings gear for the title-bar row.
 struct TitlebarButtons: View {
     @ObservedObject private var connection = ConnectionMonitor.shared
-    let openSettings: OpenSettingsAction
+    let openSettings: () -> Void
     @State private var hovering = false
 
     private var quality: (label: String, color: Color, symbol: String) {
