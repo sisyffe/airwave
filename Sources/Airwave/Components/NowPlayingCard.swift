@@ -10,15 +10,20 @@ struct NowPlayingCard: View {
     private var isFavorite: Bool { favorites.contains(url: player.sourceURL) }
     private var volumePercentage: Int { Int((player.volume * 100).rounded()) }
 
-    /// Volume stops every 25%; the slider snaps to one when it gets close.
-    private static let volumeStops: [Float] = [0, 0.25, 0.5, 0.75, 1.0]
-    private static let volumeSnap: Float = 0.04
+    private static let maximumVolume: Float = 1.0
+    private static let volumeSnap: Float = maximumVolume / 50
+    private static let volumeStep: Float = maximumVolume / 4
+    /// Volume stops are generated from the slider range; the slider snaps to a stop when it gets close.
+    private static var volumeStops: [Float] {
+        let stops = stride(from: 0, through: maximumVolume, by: volumeStep).map { $0 }
+        return stops.last == maximumVolume ? stops : stops + [maximumVolume]
+    }
 
     private var volumeBinding: Binding<Float> {
         Binding(
             get: { player.volume },
             set: { newVolume in
-                let clamped = min(max(newVolume, 0), 1)
+                let clamped = min(max(newVolume, 0), Self.maximumVolume)
                 if let stop = Self.volumeStops.first(where: { abs($0 - clamped) <= Self.volumeSnap }) {
                     player.volume = stop
                 } else {
@@ -75,7 +80,7 @@ struct NowPlayingCard: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Image(systemName: "speaker.fill").frame(width: 16)
-                Slider(value: volumeBinding, in: 0...1) { isEditing in
+                Slider(value: volumeBinding, in: 0...Self.maximumVolume) { isEditing in
                     isAdjustingVolume = isEditing
                 }
                 .controlSize(.mini)
@@ -93,7 +98,7 @@ struct NowPlayingCard: View {
                                 .background(.regularMaterial, in: Capsule())
                                 .position(
                                     x: thumbRadius
-                                        + CGFloat(player.volume)
+                                        + CGFloat(player.volume / Self.maximumVolume)
                                         * (geometry.size.width - 2 * thumbRadius),
                                     y: -16
                                 )
