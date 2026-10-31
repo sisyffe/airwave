@@ -20,7 +20,7 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
 - **Recent History:** A Recents view — switched with Favorites from the bar at the bottom of the main window — remembers your recently played tracks for quick replay. The history size (1–20, default 5) and a "Clear history" action live in **Settings → Recents**.
 - **Volume Control:** In-app volume slider from 0% to 100% (default 75%), with snap stops every 25%.
 - **ICY "Now Playing" Metadata:** For direct radio streams (Icecast/Shoutcast), Airwave reads inline ICY metadata to show the station name and the current song — in the player card and in macOS Control Center.
-- **Smart Artwork & Metadata Caching:** Automatically fetches and downscales thumbnails from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons. Covers are refreshed on every play and persisted alongside your saved favorites and recent tracks.
+- **Smart Artwork & Metadata Caching:** Automatically fetches and downscales thumbnails from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons. Newly imported favorites use YouTube's video thumbnail when available and load thumbnails once in parallel; covers are also refreshed on every play and persisted alongside your saved favorites and recent tracks.
 - **Native macOS Integration:**
   - Full support for `MPNowPlayingInfoCenter` (Control Center & Lock Screen artwork and playback state) and `MPRemoteCommandCenter` (hardware media keys).
   - Live network status indicator (`Connected`, `Weak connection`, `No network`) with an immediate, color-coded hover label, plus a quick Preferences button embedded directly in the window titlebar.
@@ -149,7 +149,7 @@ Sources/Airwave/
 │   ├── ConnectionMonitor.swift    # NWPathMonitor wrapper publishing connection quality
 │   ├── PlaybackGeneration.swift   # Token gate that discards stale/superseded async playback work
 │   ├── Favorites.swift            # Codable Favorite model & UserDefaults-backed FavoritesStore
-│   ├── FavoritesIO.swift          # Lossless JSON import/export & merge for favorites
+│   ├── FavoritesIO.swift          # Metadata-only JSON export, import & merge for favorites
 │   ├── Recents.swift              # UserDefaults-backed RecentsStore (configurable 1–20 history)
 │   └── Prefs.swift                # Centralized UserDefaults keys & defaults
 ├── Utilities/                     # Small, dependency-free helpers
@@ -182,7 +182,7 @@ Sources/Airwave/
   2. For YouTube URLs, queries `YouTubeKit` locally and selects the best stream in priority order: **HLS live stream** → **highest-bitrate M4A audio-only stream** → **lowest-resolution natively playable muxed stream**.
   3. Fetches artwork asynchronously (up to 300 KB of HTML inspected for `og:image` / `twitter:image` meta tags, falling back to Google's S2 favicon service) and downscales images to 256 px PNG data for compact storage.
 - **ICY Metadata Reader (`ICYMetadata`):** For direct radio streams, a second, audio-less connection parses inline `icy-metaint` blocks to surface the station name and current song without touching the playback pipeline; the task is generation-guarded and cancelled on stop or track change.
-- **Shared Thumbnails (`ThumbnailCache`):** Favorites and recents keep their own `thumbnail` field (so the JSON format is stable), but every image is downscaled through one shared cache. Both lists therefore store identical bytes for the same link instead of each picking its own size.
+- **Shared Thumbnails (`ThumbnailCache`):** Favorites and recents keep their own `thumbnail` field in local persistence, but exported favorites JSON contains only the favorite ID, name, and URL. Every image is downscaled through one shared cache, so both lists store identical bytes for the same link instead of each picking its own size.
 - **Lightweight Persistence (`FavoritesStore`, `RecentsStore`, `UserDefaultsJSON` & `Prefs`):** Favorites, recent history, and cached thumbnail `Data` are serialized as JSON in `UserDefaults` via a small shared helper, keeping the app completely self-contained with zero external database dependencies.
 
 ---

@@ -40,7 +40,7 @@ enum StreamResolver {
 
     static func resolve(_ input: String) async throws -> Resolved {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: trimmed), let scheme = url.scheme, ["http", "https"].contains(scheme) else {
+        guard let url = URLValidation.httpURL(from: trimmed) else {
             throw ResolveError.invalidURL
         }
         if directExtensions.contains(url.pathExtension.lowercased()) {
@@ -50,6 +50,14 @@ enum StreamResolver {
     }
 
     // MARK: Thumbnails
+
+    /// Resolves the video thumbnail without resolving a playable stream.
+    static func thumbnailURL(for page: String) async -> URL? {
+        guard let url = URLValidation.httpURL(from: page), isYouTubePage(url) else { return nil }
+        let youtube = YouTube(url: url)
+        let metadata = try? await youtube.metadata
+        return metadata?.thumbnail?.url
+    }
 
     /// Downloads and downsizes a thumbnail. Falls back to the page's og:image, then its favicon.
     static func fetchThumbnail(_ thumbnailURL: URL?, page: String) async -> Data? {
@@ -89,8 +97,7 @@ enum StreamResolver {
     // MARK: YouTubeKit
 
     private static func resolveYouTube(_ url: URL) async throws -> Resolved {
-        let host = url.host?.lowercased() ?? ""
-        guard host == "youtube.com" || host.hasSuffix(".youtube.com") || host == "youtu.be" else { throw ResolveError.unsupported }
+        guard isYouTubePage(url) else { throw ResolveError.unsupported }
         do {
             let youtube = YouTube(url: url)
             let metadata = try? await youtube.metadata
@@ -111,5 +118,10 @@ enum StreamResolver {
         } catch {
             throw ResolveError.failed(error.localizedDescription)
         }
+    }
+
+    private static func isYouTubePage(_ url: URL) -> Bool {
+        let host = url.host?.lowercased() ?? ""
+        return host == "youtube.com" || host.hasSuffix(".youtube.com") || host == "youtu.be"
     }
 }

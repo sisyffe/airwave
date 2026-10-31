@@ -3,7 +3,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 /// Favorites settings: a reorderable master list with a detail editor, plus
-/// lossless JSON import/export.
+/// metadata-only JSON import/export.
 struct FavoritesPreferences: View {
     @EnvironmentObject var favorites: FavoritesStore
     @State private var selectedFavoriteID: Favorite.ID?
@@ -87,6 +87,7 @@ struct FavoritesPreferences: View {
             }
             .frame(minWidth: 240)
         }
+        .onDrop(of: [UTType.fileURL], isTargeted: nil, perform: importDroppedFile)
         .alert("Favorites", isPresented: messageShown) {
             Button("OK") { message = nil }
         } message: {
@@ -107,7 +108,10 @@ struct FavoritesPreferences: View {
     private func delete() {
         guard let id = selectedFavoriteID, let index = favorites.items.firstIndex(where: { $0.id == id }) else { return }
         favorites.items.remove(at: index)
-        selectedFavoriteID = nil
+        selectedFavoriteID =
+            favorites.items.isEmpty
+            ? nil
+            : favorites.items[min(index, favorites.items.count - 1)].id
     }
 
     private func exportFavorites() {
@@ -129,13 +133,73 @@ struct FavoritesPreferences: View {
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        importFavorites(from: url)
+    }
+
+    private func importDroppedFile(from providers: [NSItemProvider]) -> Bool {
+        guard
+            let provider = providers.first(where: {
+                $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+            })
+        else { return false }
+
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+            guard error == nil, let url = Self.fileURL(from: item) else {
+                DispatchQueue.main.async {
+                    message = "Import failed: \(error?.localizedDescription ?? "Could not read the dropped file.")"
+                }
+                return
+            }
+            DispatchQueue.main.async {
+                importFavorites(from: url)
+            }
+        }
+        return true
+    }
+
+    private static func fileURL(from item: NSSecureCoding?) -> URL? {
+        if let url = item as? URL { return url }
+        if let url = item as? NSURL { return url as URL }
+        if let data = item as? Data { return URL(dataRepresentation: data, relativeTo: nil) }
+        return nil
+    }
+
+    private func importFavorites(from url: URL) {
+        guard url.pathExtension.lowercased() == "json" else {
+            message = "Import failed: Only JSON files can be imported."
+            return
+        }
         do {
             let incoming = try FavoritesIO.decode(try Data(contentsOf: url))
+            let existingURLs = Set(favorites.items.map(\.url))
             let result = FavoritesIO.merge(incoming, into: favorites.items)
             favorites.items = result.items
+            loadThumbnails(for: result.items.filter { !existingURLs.contains($0.url) })
             message = result.added > 0 ? "Imported \(result.added) favorite(s)." : "No new favorites to import."
         } catch {
             message = "Import failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadThumbnails(for importedFavorites: [Favorite]) {
+        guard !importedFavorites.isEmpty else { return }
+
+        Task { @MainActor in
+            await withTaskGroup(of: (String, Data?).self) { group in
+                for favorite in importedFavorites {
+                    group.addTask {
+                        let thumbnailURL = await StreamResolver.thumbnailURL(for: favorite.url)
+                        let thumbnail = await StreamResolver.fetchThumbnail(thumbnailURL, page: favorite.url)
+                        return (favorite.url, thumbnail)
+                    }
+                }
+
+                for await (url, thumbnail) in group {
+                    if let thumbnail {
+                        favorites.setThumbnail(thumbnail, for: url)
+                    }
+                }
+            }
         }
     }
 }

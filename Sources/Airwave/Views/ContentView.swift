@@ -19,12 +19,12 @@ struct ContentView: View {
                 HStack(spacing: 4) {
                     Button(action: playLink) { Image(systemName: "play.fill") }
                         .keyboardShortcut(.return, modifiers: .command)
-                        .disabled(link.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .help("Play link")
+                        .disabled(URLValidation.httpURL(from: link) == nil)
+                        .help("Play a valid HTTP or HTTPS URL")
                     TextField("YouTube link", text: $link)
                         .controlSize(.small)
                         .help(
-                            "Uses YouTubeKit. Paste a YouTube URL or a direct audio/HLS stream link; other website pages are not supported."
+                            "Enter a valid HTTP or HTTPS YouTube URL or direct audio/HLS stream URL; other website pages are not supported."
                         )
                         .focused($isLinkFocused)
                         .textFieldStyle(.roundedBorder)
@@ -36,6 +36,7 @@ struct ContentView: View {
                     .help("Paste a link from the clipboard")
                 }
             }
+
             .padding(EdgeInsets(top: 0, leading: 10, bottom: 8, trailing: 10))
 
             Divider()
@@ -76,7 +77,15 @@ struct ContentView: View {
                 .onTapGesture { NSApp.keyWindow?.makeFirstResponder(nil) }
         )
         .onExitCommand { NSApp.keyWindow?.makeFirstResponder(nil) }
-        .background(TitlebarAccessoryInstaller())
+        .background {
+            if #available(macOS 14.0, *) {
+                SettingsAccessory()
+            } else {
+                TitlebarAccessoryInstaller {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                }
+            }
+        }
         .onAppear {
             isLinkFocused = true
         }
@@ -95,8 +104,8 @@ struct ContentView: View {
     }
 
     private func playLink() {
-        let url = link.trimmingCharacters(in: .whitespaces)
-        guard !url.isEmpty else { return }
+        let url = link.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard URLValidation.httpURL(from: url) != nil else { return }
         let favorite = favorites.favorite(for: url)
         Task { await player.play(urlString: url, title: favorite?.name, artwork: favorite?.thumbnail) }
     }
@@ -106,6 +115,15 @@ struct ContentView: View {
             let firstToken = pasted.split(whereSeparator: \.isWhitespace).first
         else { return }
         link = String(firstToken)
-        playLink() // Automatic
+        playLink()  // Automatic
+    }
+}
+
+@available(macOS 14.0, *)
+private struct SettingsAccessory: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        TitlebarAccessoryInstaller(openSettings: { openSettings() })
     }
 }

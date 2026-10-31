@@ -1,15 +1,19 @@
 import Foundation
 
-/// Lossless import/export for the favorites list. Uses the same JSON shape as
-/// the on-disk persistence, so exported files round-trip (thumbnails included).
+/// Import/export for the favorites list. Exported JSON contains favorite
+/// metadata only; thumbnails remain local to the app.
 ///
 /// Draft favorites with an empty URL are excluded from both export and import,
-/// so a file always contains only complete favorites and round-trips cleanly.
+/// so a file always contains only complete favorites.
 enum FavoritesIO {
     static func encode(_ items: [Favorite]) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(items.filter { !$0.url.isEmpty })
+        let exportItems =
+            items
+            .filter { !$0.url.isEmpty }
+            .map { ExportedFavorite(id: $0.id, name: $0.name, url: $0.url) }
+        return try encoder.encode(exportItems)
     }
 
     static func decode(_ data: Data) throws -> [Favorite] {
@@ -26,5 +30,11 @@ enum FavoritesIO {
             added += 1
         }
         return (merged, added)
+    }
+
+    private struct ExportedFavorite: Encodable {
+        let id: UUID
+        let name: String
+        let url: String
     }
 }

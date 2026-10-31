@@ -6,8 +6,7 @@ struct FavoriteEditor: View {
     @EnvironmentObject var player: AudioPlayer
 
     private var looksPlayable: Bool {
-        guard let scheme = URL(string: favorite.url)?.scheme else { return false }
-        return scheme == "http" || scheme == "https"
+        URLValidation.httpURL(from: favorite.url) != nil
     }
 
     var body: some View {
@@ -19,7 +18,7 @@ struct FavoriteEditor: View {
             }
             TextField("Name", text: $favorite.name)
             TextField("Link", text: $favorite.url)
-                .help("YouTube URL or direct audio/HLS stream link")
+                .help("YouTube URL or direct audio/HLS stream URL")
             if !favorite.url.isEmpty && !looksPlayable {
                 Label("This doesn't look like a supported link.", systemImage: "exclamationmark.triangle")
                     .font(.caption)

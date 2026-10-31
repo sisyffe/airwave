@@ -5,6 +5,7 @@ struct NowPlayingCard: View {
     @EnvironmentObject var favorites: FavoritesStore
     @Binding var showAddFavorite: Bool
     @State private var showRemoveConfirm = false
+    @State private var isAdjustingVolume = false
 
     private var isFavorite: Bool { favorites.contains(url: player.sourceURL) }
     private var volumePercentage: Int { Int((player.volume * 100).rounded()) }
@@ -42,11 +43,13 @@ struct NowPlayingCard: View {
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity)
             }
-            HStack(spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
                 Button {
                     player.refresh()
                 } label: {
-                    Image(systemName: "arrow.clockwise").font(.system(size: 18))
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 18))
+                        .offset(y: -2)
                 }
                 .buttonStyle(.plain)
                 .disabled(player.sourceURL.isEmpty)
@@ -63,24 +66,42 @@ struct NowPlayingCard: View {
                 Button {
                     player.stop()
                 } label: {
-                    Image(systemName: "stop.circle").font(.system(size: 18))
+                    Image(systemName: "stop.circle")
+                        .font(.system(size: 18))
                 }
                 .buttonStyle(.plain)
                 .disabled(player.state == .idle)
                 .help("Stop")
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Image(systemName: "speaker.fill")
-                Slider(value: volumeBinding, in: 0...1)
-                    .controlSize(.mini)
-                    .accessibilityLabel("Volume")
-                    .accessibilityValue("\(volumePercentage) percent")
-                    .help("Volume: \(volumePercentage)%")
-                Image(systemName: "speaker.wave.3.fill")
-                Text("\(volumePercentage)%")
-                    .monospacedDigit()
-                    .frame(width: 32, alignment: .trailing)
-                    .accessibilityLabel("Volume \(volumePercentage) percent")
+                Image(systemName: "speaker.fill").frame(width: 16)
+                Slider(value: volumeBinding, in: 0...1) { isEditing in
+                    isAdjustingVolume = isEditing
+                }
+                .controlSize(.mini)
+                .accessibilityLabel("Volume")
+                .accessibilityValue("\(volumePercentage) percent")
+                .help("Volume: \(volumePercentage)%")
+                .overlay {
+                    GeometryReader { geometry in
+                        let thumbRadius = geometry.size.height / 2
+                        if isAdjustingVolume {
+                            Text("\(volumePercentage)%")
+                                .font(.caption2.monospacedDigit())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(.regularMaterial, in: Capsule())
+                                .position(
+                                    x: thumbRadius
+                                        + CGFloat(player.volume)
+                                        * (geometry.size.width - 2 * thumbRadius),
+                                    y: -16
+                                )
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+                Image(systemName: "speaker.wave.3.fill").frame(width: 16)
             }
             .font(.caption2)
             .foregroundStyle(.secondary)

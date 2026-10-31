@@ -76,8 +76,23 @@ do {
         Favorite(name: "Station Two", url: "https://example.com/two.m3u8", thumbnail: nil)
     ]
 
-    let decoded = try! FavoritesIO.decode(FavoritesIO.encode(items))
-    check(decoded == items, "encode/decode round-trips favorites losslessly")
+    let encoded = try! FavoritesIO.encode(items)
+    let json = try! JSONSerialization.jsonObject(with: encoded) as! [[String: Any]]
+    check(
+        json.allSatisfy { Set($0.keys) == Set(["id", "name", "url"]) },
+        "export includes only favorite id, name, and URL"
+    )
+
+    let decoded = try! FavoritesIO.decode(encoded)
+    let metadataRoundTrips = decoded.count == items.count
+        && zip(decoded, items).allSatisfy { exported, original in
+            exported.id == original.id && exported.name == original.name && exported.url == original.url
+        }
+    check(
+        metadataRoundTrips,
+        "export/import preserves favorite metadata"
+    )
+    check(decoded.allSatisfy { $0.thumbnail == nil }, "imported favorites have no exported thumbnail")
 
     let incoming = [
         Favorite(name: "Duplicate", url: "https://example.com/one.mp3"),
@@ -111,6 +126,23 @@ do {
 
     generation.invalidate()
     check(!generation.isCurrent(second), "invalidate() makes outstanding tokens stale")
+}
+
+// MARK: URLValidation
+
+do {
+    check(
+        URLValidation.httpURL(from: "https://example.com/audio.mp3") != nil,
+        "valid HTTPS URLs are accepted"
+    )
+    check(
+        URLValidation.httpURL(from: "  http://localhost:8000/stream  ") != nil,
+        "valid HTTP URLs with surrounding whitespace are accepted"
+    )
+    check(URLValidation.httpURL(from: "") == nil, "empty input is rejected")
+    check(URLValidation.httpURL(from: "example.com/audio.mp3") == nil, "relative URLs are rejected")
+    check(URLValidation.httpURL(from: "ftp://example.com/audio.mp3") == nil, "non-HTTP schemes are rejected")
+    check(URLValidation.httpURL(from: "https:///audio.mp3") == nil, "URLs without a host are rejected")
 }
 
 // MARK: ICYMetadata
