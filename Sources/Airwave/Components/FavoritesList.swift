@@ -66,6 +66,7 @@ private struct FavoriteRow: View {
         HStack(spacing: 6) {
             Image(systemName: "line.3.horizontal")
                 .font(.caption2)
+                .frame(width: 12)
                 .foregroundStyle(.tertiary)
                 .help("Drag to reorder")
             if isRenaming {

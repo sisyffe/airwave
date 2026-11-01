@@ -48,8 +48,14 @@ private struct RecentRow: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .monospacedDigit()
+                .frame(width: 12)
             Thumbnail(data: track.thumbnail, size: 24)
-            Text(track.name).font(.caption).lineLimit(1)
+            // Align the row separator with the track name (as in the favorites
+            // list) instead of the leading rank number.
+            Text(track.name)
+                .font(.caption)
+                .lineLimit(1)
+                .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
             Spacer(minLength: 0)
             if isCurrent {
                 Image(systemName: "speaker.wave.2.fill").font(.caption2).foregroundStyle(.tint)

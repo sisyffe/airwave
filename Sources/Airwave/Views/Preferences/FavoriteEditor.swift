@@ -22,30 +22,38 @@ struct FavoriteEditor: View {
 
     var body: some View {
         Form {
-            thumbnailSection
-            TextField("Name", text: $favorite.name)
-            TextField("Link", text: $favorite.url)
-                .help("YouTube URL or direct audio/HLS stream URL")
-            if !favorite.url.isEmpty && !looksPlayable {
-                Label("This doesn't look like a supported link.", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            HStack {
-                Spacer()
-                Button {
-                    Task {
-                        await player.play(
-                            urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail,
-                            customArtwork: favorite.hasCustomThumbnail == true)
-                    }
-                } label: {
-                    Label("Play", systemImage: "play.fill")
+            Section {
+                thumbnailSection
+                TextField("Name", text: $favorite.name)
+                TextField("Link", text: $favorite.url)
+                    .help("YouTube URL or direct audio/HLS stream URL")
+                if !favorite.url.isEmpty && !looksPlayable {
+                    Label("This doesn't look like a supported link.", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
-                .disabled(!looksPlayable)
+                HStack {
+                    Spacer()
+                    Button {
+                        Task {
+                            await player.play(
+                                urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail,
+                                customArtwork: favorite.hasCustomThumbnail == true)
+                        }
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
+                    }
+                    .disabled(!looksPlayable)
+                }
+            } footer: {
+                // Trim only applies to finite tracks, so it appears once playback
+                // has confirmed the track has an end.
+                if favorite.isFinite != true {
+                    Text("Trimming options appear for finite tracks if they have been played at least once.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
-            // Trim only applies to finite tracks, so it appears once playback has
-            // confirmed the track has an end.
             if favorite.isFinite == true {
                 Section {
                     timeRow(title: "Start offset", time: $favorite.startOffset)
