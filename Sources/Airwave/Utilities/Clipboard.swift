@@ -13,4 +13,12 @@ enum Clipboard {
     static var string: String? {
         NSPasteboard.general.string(forType: .string)
     }
+
+    /// Image data on the pasteboard (PNG/TIFF or any image `NSImage` can read).
+    static var imageData: Data? {
+        let pasteboard = NSPasteboard.general
+        if let data = pasteboard.data(forType: .png) { return data }
+        if let data = pasteboard.data(forType: .tiff) { return data }
+        return NSImage(pasteboard: pasteboard)?.tiffRepresentation
+    }
 }

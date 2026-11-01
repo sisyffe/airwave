@@ -7,9 +7,13 @@ import SwiftUI
 /// because popover content does not reliably receive environment updates.
 struct PlaybackOptionsPopover: View {
     @ObservedObject private var player = AudioPlayer.shared
+    @AppStorage(Prefs.showExtraSeekControls) private var showExtraSeekControls =
+        Prefs.defaultShowExtraSeekControls
 
     private static let shortSkip: TimeInterval = 30
     private static let regularSkip: TimeInterval = 10
+    private static let mediumSkip: TimeInterval = 90
+    private static let longSkip: TimeInterval = 300
 
     var body: some View {
         controls
@@ -29,6 +33,15 @@ struct PlaybackOptionsPopover: View {
                 skipButton(by: Self.shortSkip, symbol: "goforward.30", size: 15, help: "Forward 30 seconds")
             }
             .frame(maxWidth: .infinity)
+            if showExtraSeekControls {
+                HStack(spacing: 12) {
+                    skipButton(by: -Self.longSkip, symbol: "gobackward.5", size: 15, help: "Rewind 5 minutes")
+                    skipButton(by: -Self.mediumSkip, symbol: "gobackward.90", size: 22, help: "Rewind 1.5 minutes")
+                    skipButton(by: Self.mediumSkip, symbol: "goforward.90", size: 22, help: "Forward 1.5 minutes")
+                    skipButton(by: Self.longSkip, symbol: "goforward.5", size: 15, help: "Forward 5 minutes")
+                }
+                .frame(maxWidth: .infinity)
+            }
         }
         .disabled(player.isLive)
     }

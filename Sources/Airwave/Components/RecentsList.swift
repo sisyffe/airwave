@@ -12,8 +12,9 @@ struct RecentsList: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
-                ForEach(recents.items) { track in
+                ForEach(Array(recents.items.enumerated()), id: \.element.id) { index, track in
                     RecentRow(
+                        rank: index + 1,
                         track: track,
                         isCurrent: player.sourceURL == track.url && player.isPlaying,
                         onPlay: { play(track) },
@@ -26,11 +27,16 @@ struct RecentsList: View {
     }
 
     private func play(_ track: RecentTrack) {
-        Task { await player.play(urlString: track.url, title: track.name, artwork: track.thumbnail) }
+        Task {
+            await player.play(
+                urlString: track.url, title: track.name, artwork: track.thumbnail,
+                customArtwork: track.hasCustomThumbnail == true)
+        }
     }
 }
 
 private struct RecentRow: View {
+    let rank: Int
     let track: RecentTrack
     let isCurrent: Bool
     let onPlay: () -> Void
@@ -38,6 +44,10 @@ private struct RecentRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            Text("\(rank).")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .monospacedDigit()
             Thumbnail(data: track.thumbnail, size: 24)
             Text(track.name).font(.caption).lineLimit(1)
             Spacer(minLength: 0)

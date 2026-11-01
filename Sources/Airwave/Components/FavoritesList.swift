@@ -40,7 +40,11 @@ struct FavoritesList: View {
     }
 
     private func play(_ favorite: Favorite) {
-        Task { await player.play(urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail) }
+        Task {
+            await player.play(
+                urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail,
+                customArtwork: favorite.hasCustomThumbnail == true)
+        }
     }
 }
 

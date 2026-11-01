@@ -188,8 +188,7 @@ struct FavoritesPreferences: View {
             await withTaskGroup(of: (String, Data?).self) { group in
                 for favorite in importedFavorites {
                     group.addTask {
-                        let thumbnailURL = await StreamResolver.thumbnailURL(for: favorite.url)
-                        let thumbnail = await StreamResolver.fetchThumbnail(thumbnailURL, page: favorite.url)
+                        let thumbnail = await StreamResolver.thumbnail(for: favorite.url)
                         return (favorite.url, thumbnail)
                     }
                 }

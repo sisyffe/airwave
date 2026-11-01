@@ -107,7 +107,11 @@ struct ContentView: View {
         let url = link.trimmingCharacters(in: .whitespacesAndNewlines)
         guard URLValidation.httpURL(from: url) != nil else { return }
         let favorite = favorites.favorite(for: url)
-        Task { await player.play(urlString: url, title: favorite?.name, artwork: favorite?.thumbnail) }
+        Task {
+            await player.play(
+                urlString: url, title: favorite?.name, artwork: favorite?.thumbnail,
+                customArtwork: favorite?.hasCustomThumbnail == true)
+        }
     }
 
     private func paste() {

@@ -28,6 +28,7 @@ swiftc -swift-version 5 \
   Sources/Airwave/Services/Prefs.swift \
   Sources/Airwave/Services/Favorites.swift \
   Sources/Airwave/Services/FavoritesIO.swift \
+  Sources/Airwave/Services/Recents.swift \
   Sources/Airwave/Services/ThumbnailCache.swift \
   Sources/Airwave/Services/ICYMetadata.swift \
   Sources/Airwave/Services/PlaybackGeneration.swift \

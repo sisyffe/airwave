@@ -15,6 +15,8 @@ enum Prefs {
     static let defaultQuitOnLastWindowClosed = true
     static let replayOnTrackEnd = "replayOnTrackEnd"
     static let defaultReplayOnTrackEnd = true
+    static let showExtraSeekControls = "showExtraSeekControls"
+    static let defaultShowExtraSeekControls = false
 
     static func shouldQuitAfterLastWindowClosed(using defaults: UserDefaults = .standard) -> Bool {
         guard defaults.object(forKey: quitOnLastWindowClosed) != nil else {

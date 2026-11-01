@@ -59,6 +59,12 @@ enum StreamResolver {
         return metadata?.thumbnail?.url
     }
 
+    /// Resolves and downloads the best thumbnail for a page URL (YouTube
+    /// metadata, then og:image, then favicon), downscaled for storage.
+    static func thumbnail(for page: String) async -> Data? {
+        await fetchThumbnail(await thumbnailURL(for: page), page: page)
+    }
+
     /// Downloads and downsizes a thumbnail. Falls back to the page's og:image, then its favicon.
     static func fetchThumbnail(_ thumbnailURL: URL?, page: String) async -> Data? {
         var candidates: [URL] = []

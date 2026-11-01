@@ -17,7 +17,8 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
 
 - **Hybrid Stream Playback:** Play direct audio stream URLs (`mp3`, `aac`, `m4a`, `m3u8`, etc.) and extract audio-only or HLS live streams from YouTube links automatically.
 - **Favorites Management:** Save your favorite stations and streams, rename them inline, remove them from the row's `…` menu, and reorder them by dragging (both in the main window and in Settings). Import and export your list as a lossless JSON file from Preferences.
-- **Recent History:** A Recents view — switched with Favorites from the bar at the bottom of the main window — remembers your recently played tracks for quick replay. The history size (1–20, default 5) and a "Clear history" action live in **Settings → Recents**.
+- **Custom Thumbnails:** In **Settings → Favorites**, give a favorite your own artwork by pasting an image, importing a file, or dragging one onto the thumbnail. The cover is applied everywhere the track appears — Favorites, Recents and the Now Playing card — and is never replaced by automatic artwork fetching. **Reset to default** clears it and re-fetches the automatic artwork.
+- **Recent History:** A Recents view — switched with Favorites from the bar at the bottom of the main window — remembers your recently played tracks for quick replay, numbered in order (the same numbering appears in the Dock menu's **Recent Tracks** submenu). The history size (1–20, default 5) and a "Clear history" action live in **Settings → Recents**.
 - **Volume Control:** In-app volume slider from 0% to 100% (default 75%), with snap stops every 25%.
 - **ICY "Now Playing" Metadata:** For direct radio streams (Icecast/Shoutcast), Airwave reads inline ICY metadata to show the station name and the current song — in the player card and in macOS Control Center.
 - **Smart Artwork & Metadata Caching:** Automatically fetches and downscales thumbnails from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons. Newly imported favorites use YouTube's video thumbnail when available and load thumbnails once in parallel; covers are also refreshed on every play and persisted alongside your saved favorites and recent tracks.
@@ -27,7 +28,8 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
   - A right-click Dock menu with **Play/Pause** and a **Recent Tracks** submenu for quick playback.
   - Optional **Launch at Login** via `SMAppService`.
 - **Playback Options Popover:** An arrow in the top-right of the player card opens a dropdown with the seek controls, greyed out for live streams that have no seekable timeline.
-- **Seek Controls:** For finite tracks, rewind or fast-forward 10 seconds (regular buttons) or 30 seconds (small buttons). Disabled for live streams, which have no seekable timeline.
+- **Seek Controls:** For finite tracks, rewind or fast-forward 10 seconds (regular buttons) or 30 seconds (small buttons). **Settings → Playback** can add a second row of ±1.5 min and ±5 min buttons. Disabled for live streams, which have no seekable timeline.
+- **Track Trimming:** In **Settings → Favorites**, set optional **Start offset** (from the start) and **End offset** (counted back from the end) in minutes and seconds for a favorite to trim its track on playback — applied from any entry point (Favorites, Recents, Dock, hotstart). Live streams ignore trim.
 - **End-of-Track Behavior:** Choose in **Settings → Playback** whether a finished track replays from the start (default) or stops. Applies to finite tracks only; live streams never end.
 - **Hotstart:** Optionally resume your last played stream automatically as soon as the app launches. Only a stream that was playing when Airwave closed is resumed — a stopped stream is not restarted.
 - **Background Playback Mode:** Choose whether closing the main window quits the application or keeps Airwave running silently in the background.

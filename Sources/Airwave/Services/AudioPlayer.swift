@@ -32,6 +32,17 @@ final class AudioPlayer: ObservableObject {
     private var rateObservation: NSKeyValueObservation?
     /// Tracks the current item's duration so `isLive` stays accurate.
     private var durationObservation: NSKeyValueObservation?
+    /// True when `artwork` was supplied by the user, so automatic fetching must
+    /// not replace it on the Now Playing card.
+    private var artworkIsCustom = false
+    /// Trim offsets for the current favorite, applied once the item is known to
+    /// be finite: `trimStartOffset` from the start, `trimEndOffset` back from the
+    /// end. Nil means no trim.
+    private var trimStartOffset: TimeInterval?
+    private var trimEndOffset: TimeInterval?
+    private var trimApplied = false
+    /// Boundary observer that fires when playback crosses the trimmed end.
+    private var trimEndObserver: Any?
     /// Fires when the current finite item reaches its end, to replay or stop it.
     private var endOfTrackObserver: NSObjectProtocol?
     /// ICY metadata reader task for the current direct stream, if any.
@@ -61,17 +72,28 @@ final class AudioPlayer: ObservableObject {
         let url: String
         let title: String
         let artwork: Data?
+        let artworkIsCustom: Bool
         let item: AVPlayerItem?
         let wasPlaying: Bool
+        let trimStartOffset: TimeInterval?
+        let trimEndOffset: TimeInterval?
     }
 
-    func play(urlString: String, title: String? = nil, artwork knownArtwork: Data? = nil) async {
+    func play(urlString: String, title: String? = nil, artwork knownArtwork: Data? = nil, customArtwork: Bool = false) async {
         hasStarted = true
         lastError = nil
         let playGeneration = generation.begin()
         let previous = Snapshot(
-            url: sourceURL, title: self.title, artwork: artwork,
-            item: player.currentItem, wasPlaying: isPlaying)
+            url: sourceURL, title: self.title, artwork: artwork, artworkIsCustom: artworkIsCustom,
+            item: player.currentItem, wasPlaying: isPlaying, trimStartOffset: trimStartOffset,
+            trimEndOffset: trimEndOffset)
+        artworkIsCustom = customArtwork
+        // A favorite may define a trim range; it applies wherever the URL plays.
+        let favorite = FavoritesStore.shared.favorite(for: urlString)
+        trimStartOffset = favorite?.startOffset
+        trimEndOffset = favorite?.endOffset
+        trimApplied = false
+        removeTrimEndObserver()
         beginLoading(urlString: urlString, title: title, artwork: knownArtwork)
         do {
             let resolved = try await StreamResolver.resolve(urlString)
@@ -115,7 +137,7 @@ final class AudioPlayer: ObservableObject {
         observeDuration(of: item)
         player.play()
         UserDefaults.standard.set(urlString, forKey: Prefs.lastURL)
-        RecentsStore.shared.record(name: self.title, url: urlString, thumbnail: artwork)
+        RecentsStore.shared.record(name: self.title, url: urlString, thumbnail: artwork, custom: artworkIsCustom)
         updateNowPlaying()
         startICYIfEligible(resolved, playGeneration: playGeneration)
     }
@@ -130,12 +152,22 @@ final class AudioPlayer: ObservableObject {
     /// Refreshes the artwork even when a cached one was supplied (from
     /// favorites/recents), so covers stay up to date on every play.
     private func refreshArtwork(_ resolved: StreamResolver.Resolved, page: String, playGeneration: Int) async {
+        guard !artworkIsCustom else { return }  // keep the user's cover
         let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: page)
         if generation.isCurrent(playGeneration), let fetched, fetched != artwork {
             artwork = fetched
             updateNowPlaying()
             NotificationCenter.default.post(name: .airwaveArtwork, object: page, userInfo: ["data": fetched])
         }
+    }
+
+    /// Replaces the artwork of the currently playing track (used when a custom
+    /// thumbnail is set or reset from Settings). No-op for other URLs.
+    func applyArtwork(_ data: Data?, for url: String, custom: Bool) {
+        guard url == sourceURL else { return }
+        artwork = data
+        artworkIsCustom = custom
+        updateNowPlaying()
     }
 
     /// The item we just swapped in never actually started; put back what was playing before.
@@ -148,20 +180,29 @@ final class AudioPlayer: ObservableObject {
     private func restore(_ snapshot: Snapshot) {
         removeEndOfTrackObserver()
         removeDurationObserver()
+        // Restore trim before the duration observer runs, so it re-applies for
+        // the item being brought back.
+        trimStartOffset = snapshot.trimStartOffset
+        trimEndOffset = snapshot.trimEndOffset
+        trimApplied = false
+        removeTrimEndObserver()
         if let item = snapshot.item, player.currentItem !== item {
             player.replaceCurrentItem(with: item)
             if item.duration.isIndefinite {
                 item.seek(to: .positiveInfinity, completionHandler: nil)  // back to the live edge
             }
         }
+        // Set the URL first so the duration observer records finiteness for the
+        // restored track, not the one that just failed.
+        sourceURL = snapshot.url
         if let item = snapshot.item {
             observeDuration(of: item)
             observeEndOfTrack(of: item)
         }
         if snapshot.wasPlaying, snapshot.item != nil { player.play() }
-        sourceURL = snapshot.url
         title = snapshot.title
         artwork = snapshot.artwork
+        artworkIsCustom = snapshot.artworkIsCustom
         isLive = snapshot.item?.duration.isIndefinite ?? true
         state = snapshot.item == nil ? .idle : (snapshot.wasPlaying ? .playing : .paused)
         updateNowPlaying()
@@ -183,6 +224,51 @@ final class AudioPlayer: ObservableObject {
     private func updateLiveState(_ item: AVPlayerItem) {
         guard player.currentItem === item else { return }
         isLive = item.duration.isIndefinite
+        if !isLive {
+            applyTrimIfNeeded(item)
+            // Learn that this URL is a finite track, so its favorite can offer trim.
+            FavoritesStore.shared.setFinite(true, for: sourceURL)
+        }
+    }
+
+    /// Applies the favorite's trim once the item is known to be finite: seek to
+    /// the start offset and cap forward playback `endOffset` seconds before the
+    /// track's natural end.
+    private func applyTrimIfNeeded(_ item: AVPlayerItem) {
+        guard !trimApplied, trimStartOffset != nil || trimEndOffset != nil else { return }
+        trimApplied = true
+        if let start = trimStartOffset, start > 0 {
+            player.seek(to: CMTime(seconds: start, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+        let duration = item.duration.seconds
+        if let offset = trimEndOffset, offset > 0, duration.isFinite {
+            let end = duration - offset
+            if end > (trimStartOffset ?? 0) {
+                item.forwardPlaybackEndTime = CMTime(seconds: end, preferredTimescale: 600)
+                installTrimEndObserver(end)
+            }
+        }
+    }
+
+    private func installTrimEndObserver(_ end: TimeInterval) {
+        removeTrimEndObserver()
+        let time = NSValue(time: CMTime(seconds: end, preferredTimescale: 600))
+        trimEndObserver = player.addBoundaryTimeObserver(forTimes: [time], queue: .main) { [weak self] in
+            Task { @MainActor in self?.trimDidReachEnd() }
+        }
+    }
+
+    private func removeTrimEndObserver() {
+        if let trimEndObserver {
+            player.removeTimeObserver(trimEndObserver)
+            self.trimEndObserver = nil
+        }
+    }
+
+    /// The trimmed end was reached: replay from the trim start or stop.
+    private func trimDidReachEnd() {
+        guard !isLive else { return }
+        trackDidReachEnd()
     }
 
     /// Watches for the end of the current item. Only finite items post this
@@ -209,7 +295,7 @@ final class AudioPlayer: ObservableObject {
     private func trackDidReachEnd() {
         guard let item = player.currentItem, !item.duration.isIndefinite else { return }
         if Prefs.shouldReplayOnTrackEnd() {
-            player.seek(to: .zero)
+            player.seek(to: CMTime(seconds: trimStartOffset ?? 0, preferredTimescale: 600))
             player.play()
         } else {
             stop()
@@ -218,7 +304,9 @@ final class AudioPlayer: ObservableObject {
 
     func resume() {
         guard player.currentItem != nil else {
-            if !sourceURL.isEmpty { Task { await play(urlString: sourceURL, title: title, artwork: artwork) } }
+            if !sourceURL.isEmpty {
+                Task { await play(urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom) }
+            }
             return
         }
         // For live streams, jump back to the live edge after a pause.
@@ -237,7 +325,9 @@ final class AudioPlayer: ObservableObject {
         guard !isLive, let item = player.currentItem else { return }
         let duration = item.duration.seconds
         guard duration.isFinite, duration > 0 else { return }
-        let target = min(max(player.currentTime().seconds + seconds, 0), duration)
+        let lower = trimStartOffset ?? 0
+        let upper = min(duration - (trimEndOffset ?? 0), duration)
+        let target = min(max(player.currentTime().seconds + seconds, lower), upper)
         player.seek(
             to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
     }
@@ -246,7 +336,7 @@ final class AudioPlayer: ObservableObject {
     /// existing title and artwork so the UI does not flicker.
     func refresh() {
         guard !sourceURL.isEmpty else { return }
-        Task { await play(urlString: sourceURL, title: title, artwork: artwork) }
+        Task { await play(urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom) }
     }
 
     func stop() {
@@ -255,12 +345,17 @@ final class AudioPlayer: ObservableObject {
         generation.invalidate()
         removeEndOfTrackObserver()
         removeDurationObserver()
+        removeTrimEndObserver()
+        trimStartOffset = nil
+        trimEndOffset = nil
+        trimApplied = false
         player.pause()
         player.replaceCurrentItem(with: nil)
         icyTask?.cancel()
         icyTask = nil
         streamTitle = nil
         isLive = true
+        artworkIsCustom = false
         sourceURL = ""
         title = ""
         artwork = nil
@@ -281,7 +376,7 @@ final class AudioPlayer: ObservableObject {
                 guard let self, self.generation.isCurrent(playGeneration) else { return }
                 if let station = info.station, self.title == self.sourceURL {
                     self.title = station
-                    RecentsStore.shared.record(name: station, url: self.sourceURL, thumbnail: self.artwork)
+                    RecentsStore.shared.record(name: station, url: self.sourceURL, thumbnail: self.artwork, custom: self.artworkIsCustom)
                 }
                 self.streamTitle = info.song
                 self.updateNowPlaying()

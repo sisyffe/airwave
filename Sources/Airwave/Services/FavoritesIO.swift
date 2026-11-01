@@ -12,7 +12,10 @@ enum FavoritesIO {
         let exportItems =
             items
             .filter { !$0.url.isEmpty }
-            .map { ExportedFavorite(id: $0.id, name: $0.name, url: $0.url) }
+            .map {
+                ExportedFavorite(
+                    id: $0.id, name: $0.name, url: $0.url, startOffset: $0.startOffset, endOffset: $0.endOffset)
+            }
         return try encoder.encode(exportItems)
     }
 
@@ -36,5 +39,8 @@ enum FavoritesIO {
         let id: UUID
         let name: String
         let url: String
+        /// Optional trim offsets; omitted from the JSON when unset.
+        let startOffset: TimeInterval?
+        let endOffset: TimeInterval?
     }
 }

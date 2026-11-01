@@ -66,6 +66,8 @@ do {
         Prefs.shouldReplayOnTrackEnd(using: defaults),
         "replay-on-track-end respects an explicit true"
     )
+
+    check(!Prefs.defaultShowExtraSeekControls, "extra seek controls default to off")
 }
 
 // MARK: FavoritesIO
@@ -112,6 +114,36 @@ do {
 
     let exported = try! FavoritesIO.decode(FavoritesIO.encode(items + [Favorite(name: "Draft", url: "")]))
     check(exported.map(\.url) == items.map(\.url), "export skips empty-URL drafts (symmetric with import)")
+
+    // Favorites stored by older versions (and exported files) have no
+    // `hasCustomThumbnail` key; they must still decode rather than wipe the list.
+    let legacyJSON = Data(
+        #"[{"id":"8A9F1D2E-0000-4000-8000-000000000000","name":"Old","url":"https://example.com/old.mp3"}]"#.utf8)
+    let legacy = try! FavoritesIO.decode(legacyJSON)
+    check(legacy.count == 1, "legacy favorites JSON decodes")
+    check(legacy.first?.hasCustomThumbnail == nil, "a missing custom-thumbnail flag decodes as nil")
+    check(
+        legacy.first?.startOffset == nil && legacy.first?.endOffset == nil,
+        "missing trim offsets decode as nil"
+    )
+    check(legacy.first?.isFinite == nil, "a missing finiteness flag decodes as nil")
+
+    let trimmed = Favorite(name: "Trimmed", url: "https://example.com/t.mp3", startOffset: 30, endOffset: 90)
+    let roundTrip = try! FavoritesIO.decode(FavoritesIO.encode([trimmed]))
+    check(
+        roundTrip.first?.startOffset == 30 && roundTrip.first?.endOffset == 90,
+        "trim offsets round-trip through export/import"
+    )
+}
+
+// MARK: RecentTrack
+
+do {
+    let legacyJSON = Data(
+        #"[{"id":"8A9F1D2E-0000-4000-8000-000000000000","name":"Old","url":"https://example.com/old.mp3"}]"#.utf8)
+    let decoded = try! JSONDecoder().decode([RecentTrack].self, from: legacyJSON)
+    check(decoded.count == 1, "legacy recent JSON decodes")
+    check(decoded.first?.hasCustomThumbnail == nil, "a missing recent custom-thumbnail flag decodes as nil")
 }
 
 // MARK: PlaybackGeneration
