@@ -5,7 +5,7 @@
 ![Platform: macOS 13.0+](https://img.shields.io/badge/platform-macOS%2013.0%2B-blue.svg)
 ![Swift 5.9+](https://img.shields.io/badge/swift-5.9%2B-orange.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
-![Version: 1.1.2](https://img.shields.io/badge/version-1.1.1-informational.svg)
+![Version: 1.1.3](https://img.shields.io/badge/version-1.1.3-informational.svg)
 
 Airwave lets you listen to live internet radio, direct audio streams, and YouTube videos or live broadcasts without keeping a heavy web browser tab open. Designed exclusively for macOS Sonoma and later, it integrates seamlessly with system media controls, the Control Center Now Playing widget, and keyboard shortcuts.
 
@@ -26,6 +26,8 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
   - Live network status indicator (`Connected`, `Weak connection`, `No network`) with an immediate, color-coded hover label, plus a quick Preferences button embedded directly in the window titlebar.
   - A right-click Dock menu with **Play/Pause** and a **Recent Tracks** submenu for quick playback.
   - Optional **Launch at Login** via `SMAppService`.
+- **Playback Options Popover:** An arrow in the top-right of the player card opens a dropdown with the seek controls, greyed out for live streams that have no seekable timeline.
+- **Seek Controls:** For finite tracks, rewind or fast-forward 10 seconds (regular buttons) or 30 seconds (small buttons). Disabled for live streams, which have no seekable timeline.
 - **End-of-Track Behavior:** Choose in **Settings → Playback** whether a finished track replays from the start (default) or stops. Applies to finite tracks only; live streams never end.
 - **Hotstart:** Optionally resume your last played stream automatically as soon as the app launches. Only a stream that was playing when Airwave closed is resumed — a stopped stream is not restarted.
 - **Background Playback Mode:** Choose whether closing the main window quits the application or keeps Airwave running silently in the background.
@@ -167,6 +169,7 @@ Sources/Airwave/
 │       └── FavoriteEditor.swift   # Detail pane for editing one favorite
 └── Components/                    # Reusable SwiftUI views
     ├── NowPlayingCard.swift       # Playback header with status pill, title/song, transport & volume slider
+    ├── PlaybackOptionsPopover.swift  # Top-right dropdown with the seek controls
     ├── FavoritesList.swift        # Interactive list with inline rename & native drag-to-reorder
     ├── RecentsList.swift          # Recently played tracks with quick replay
     ├── TitlebarButtons.swift      # Network indicator + settings gear shown in the title bar
@@ -194,6 +197,8 @@ Sources/Airwave/
 | **Play / Pause** | `Space` (via Playback menu) or Media Play/Pause key |
 | **Stop Stream** | `⌘.` (`Cmd + Period`) |
 | **Refresh Stream** | `⌘R` (`Cmd + R`) |
+| **Rewind / Forward 10 s** | `←` / `→` (finite tracks only) |
+| **Rewind / Forward 30 s** | `⇧←` / `⇧→` (finite tracks only) |
 | **Volume Control** | In-app volume slider, 0–100% with 25% snap stops (persisted across launches) |
 
 ---

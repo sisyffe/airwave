@@ -20,6 +20,8 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var streamTitle: String?
     /// Last playback error, shown as an alert by the UI (nil = none).
     @Published private(set) var lastError: String?
+    /// Whether the current item has no known end (live stream / endless radio).
+    @Published private(set) var isLive = true
     @Published var volume: Float {
         didSet { player.volume = volume; UserDefaults.standard.set(volume, forKey: Prefs.volume) }
     }
@@ -28,6 +30,8 @@ final class AudioPlayer: ObservableObject {
     private let player = AVPlayer()
     private var statusObservation: NSKeyValueObservation?
     private var rateObservation: NSKeyValueObservation?
+    /// Tracks the current item's duration so `isLive` stays accurate.
+    private var durationObservation: NSKeyValueObservation?
     /// Fires when the current finite item reaches its end, to replay or stop it.
     private var endOfTrackObserver: NSObjectProtocol?
     /// ICY metadata reader task for the current direct stream, if any.
@@ -86,9 +90,11 @@ final class AudioPlayer: ObservableObject {
     private func beginLoading(urlString: String, title: String?, artwork knownArtwork: Data?) {
         state = .loading
         streamTitle = nil
+        isLive = true
         icyTask?.cancel()
         icyTask = nil
         removeEndOfTrackObserver()
+        removeDurationObserver()
         sourceURL = urlString
         self.title = title ?? urlString
         artwork = knownArtwork
@@ -106,6 +112,7 @@ final class AudioPlayer: ObservableObject {
         }
         observeEndOfTrack(of: item)
         player.replaceCurrentItem(with: item)
+        observeDuration(of: item)
         player.play()
         UserDefaults.standard.set(urlString, forKey: Prefs.lastURL)
         RecentsStore.shared.record(name: self.title, url: urlString, thumbnail: artwork)
@@ -140,19 +147,42 @@ final class AudioPlayer: ObservableObject {
 
     private func restore(_ snapshot: Snapshot) {
         removeEndOfTrackObserver()
+        removeDurationObserver()
         if let item = snapshot.item, player.currentItem !== item {
             player.replaceCurrentItem(with: item)
             if item.duration.isIndefinite {
                 item.seek(to: .positiveInfinity, completionHandler: nil)  // back to the live edge
             }
         }
-        if let item = snapshot.item { observeEndOfTrack(of: item) }
+        if let item = snapshot.item {
+            observeDuration(of: item)
+            observeEndOfTrack(of: item)
+        }
         if snapshot.wasPlaying, snapshot.item != nil { player.play() }
         sourceURL = snapshot.url
         title = snapshot.title
         artwork = snapshot.artwork
+        isLive = snapshot.item?.duration.isIndefinite ?? true
         state = snapshot.item == nil ? .idle : (snapshot.wasPlaying ? .playing : .paused)
         updateNowPlaying()
+    }
+
+    /// Observes the current item's duration so `isLive` reflects whether the
+    /// track has an end (finite audio) or is an endless stream.
+    private func observeDuration(of item: AVPlayerItem) {
+        durationObservation = item.observe(\.duration) { [weak self] item, _ in
+            Task { @MainActor in self?.updateLiveState(item) }
+        }
+        updateLiveState(item)
+    }
+
+    private func removeDurationObserver() {
+        durationObservation = nil
+    }
+
+    private func updateLiveState(_ item: AVPlayerItem) {
+        guard player.currentItem === item else { return }
+        isLive = item.duration.isIndefinite
     }
 
     /// Watches for the end of the current item. Only finite items post this
@@ -201,6 +231,17 @@ final class AudioPlayer: ObservableObject {
     func pause() { player.pause() }
     func toggle() { isPlaying ? pause() : resume() }
 
+    /// Jumps forward (positive) or backward (negative) by `seconds`, clamped to
+    /// the track. No-op for live streams, which have no seekable timeline.
+    func skip(by seconds: TimeInterval) {
+        guard !isLive, let item = player.currentItem else { return }
+        let duration = item.duration.seconds
+        guard duration.isFinite, duration > 0 else { return }
+        let target = min(max(player.currentTime().seconds + seconds, 0), duration)
+        player.seek(
+            to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
     /// Re-resolve and reload the current source (fresh stream URL), keeping the
     /// existing title and artwork so the UI does not flicker.
     func refresh() {
@@ -213,11 +254,13 @@ final class AudioPlayer: ObservableObject {
         // downloading) cannot start playback or paint artwork after the stop.
         generation.invalidate()
         removeEndOfTrackObserver()
+        removeDurationObserver()
         player.pause()
         player.replaceCurrentItem(with: nil)
         icyTask?.cancel()
         icyTask = nil
         streamTitle = nil
+        isLive = true
         sourceURL = ""
         title = ""
         artwork = nil
@@ -284,7 +327,7 @@ final class AudioPlayer: ObservableObject {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: title.isEmpty ? AppInfo.name : title,
             MPMediaItemPropertyArtist: streamTitle ?? URL(string: sourceURL)?.host ?? AppInfo.name,
-            MPNowPlayingInfoPropertyIsLiveStream: true,
+            MPNowPlayingInfoPropertyIsLiveStream: isLive,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
             MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
         ]

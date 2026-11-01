@@ -6,10 +6,14 @@ struct NowPlayingCard: View {
     @Binding var showAddFavorite: Bool
     @State private var showRemoveConfirm = false
     @State private var isAdjustingVolume = false
+    @State private var showOptions = false
 
     private var isFavorite: Bool { favorites.contains(url: player.sourceURL) }
     private var volumePercentage: Int { Int((player.volume * 100).rounded()) }
 
+    /// Square box shared by the favorite star and the options arrow so the two
+    /// corner buttons read as symmetrical (glyphs stay at their own sizes).
+    private static let controlButtonSize: CGFloat = 16
     private static let maximumVolume: Float = 1.0
     private static let volumeSnap: Float = maximumVolume / 50
     private static let volumeStep: Float = maximumVolume / 4
@@ -115,6 +119,7 @@ struct NowPlayingCard: View {
         .frame(maxWidth: .infinity)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
         .overlay(alignment: .topLeading) { favoriteButton.padding(6) }
+        .overlay(alignment: .topTrailing) { optionsButton.padding(6) }
         .confirmationDialog(
             "Remove from favorites?",
             isPresented: $showRemoveConfirm,
@@ -138,10 +143,28 @@ struct NowPlayingCard: View {
             Image(systemName: isFavorite ? "star.fill" : "star")
                 .font(.system(size: 14))
                 .foregroundStyle(isFavorite ? Color.accentColor.opacity(0.55) : Color.primary)
+                .frame(width: Self.controlButtonSize, height: Self.controlButtonSize)
         }
         .buttonStyle(.plain)
         .disabled(player.sourceURL.isEmpty)
         .help(isFavorite ? "Remove from favorites" : "Add current to favorites")
+    }
+
+    private var optionsButton: some View {
+        Button {
+            showOptions.toggle()
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(showOptions ? 0 : 180))
+                .frame(width: Self.controlButtonSize, height: Self.controlButtonSize)
+        }
+        .buttonStyle(.plain)
+        .help("More controls")
+        .popover(isPresented: $showOptions, arrowEdge: .bottom) {
+            PlaybackOptionsPopover()
+        }
     }
 
     @ViewBuilder private var statusLine: some View {
@@ -151,7 +174,12 @@ struct NowPlayingCard: View {
             HStack(spacing: 4) {
                 ProgressView().controlSize(.mini); Text("Loading…")
             }.foregroundStyle(.secondary)
-        case .playing: Label("Live", systemImage: "dot.radiowaves.left.and.right").foregroundStyle(.green)
+        case .playing:
+            if player.isLive {
+                Label("Live", systemImage: "dot.radiowaves.left.and.right").foregroundStyle(.green)
+            } else {
+                Label("Playing", systemImage: "play.fill").foregroundStyle(.green)
+            }
         case .paused: Text("Paused").foregroundStyle(.secondary)
         }
     }

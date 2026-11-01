@@ -44,6 +44,21 @@ struct AirwaveApp: App {
                     .keyboardShortcut(".", modifiers: .command)
                 Button("Refresh") { player.refresh() }
                     .keyboardShortcut("r", modifiers: .command)
+                Divider()
+                // Arrow keys seek finite tracks; Shift makes the jump 30 seconds.
+                // Disabled for live streams, which have no seekable timeline.
+                Button("Rewind 10 Seconds") { player.skip(by: -10) }
+                    .keyboardShortcut(.leftArrow, modifiers: [])
+                    .disabled(player.isLive)
+                Button("Forward 10 Seconds") { player.skip(by: 10) }
+                    .keyboardShortcut(.rightArrow, modifiers: [])
+                    .disabled(player.isLive)
+                Button("Rewind 30 Seconds") { player.skip(by: -30) }
+                    .keyboardShortcut(.leftArrow, modifiers: .shift)
+                    .disabled(player.isLive)
+                Button("Forward 30 Seconds") { player.skip(by: 30) }
+                    .keyboardShortcut(.rightArrow, modifiers: .shift)
+                    .disabled(player.isLive)
             }
         }
 
