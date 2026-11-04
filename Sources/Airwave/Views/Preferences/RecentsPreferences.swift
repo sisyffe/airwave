@@ -4,24 +4,24 @@ import SwiftUI
 struct RecentsPreferences: View {
     @EnvironmentObject var recents: RecentsStore
     @State private var confirmClear = false
-
-    private var maxCountBinding: Binding<Double> {
-        Binding(
-            get: { Double(recents.maxCount) },
-            set: { recents.maxCount = Int($0.rounded()) })
-    }
+    /// Local mirror of the slider value so dragging never fights the store's
+    /// clamping (which otherwise steps the thumb back mid-drag).
+    @State private var historySize: Double = Double(Prefs.defaultRecentMaxCount)
 
     var body: some View {
         Form {
             LabeledContent("History size") {
                 HStack(spacing: 8) {
                     Slider(
-                        value: maxCountBinding,
+                        value: $historySize,
                         in: Double(Prefs.minRecentMaxCount)...Double(Prefs.maxRecentMaxCount),
                         step: 1
                     )
                     .frame(width: 160)
-                    Text("\(recents.maxCount)")
+                    .onChange(of: historySize) { value in
+                        recents.maxCount = Int(value.rounded())
+                    }
+                    Text("\(Int(historySize.rounded()))")
                         .monospacedDigit()
                         .frame(width: 22, alignment: .trailing)
                 }
@@ -36,6 +36,8 @@ struct RecentsPreferences: View {
             .help("Removes every entry from the Recents list.")
         }
         .formStyle(.grouped)
+        .onAppear { historySize = Double(recents.maxCount) }
+        .onChange(of: recents.maxCount) { historySize = Double($0) }
         .confirmationDialog("Clear recent history?", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("Clear", role: .destructive) { recents.clear() }
             Button("Cancel", role: .cancel) {}
