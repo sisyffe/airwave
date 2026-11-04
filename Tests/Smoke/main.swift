@@ -83,6 +83,18 @@ do {
         Prefs.thumbnailDisplayMode(using: defaults) == .fill,
         "an unrecognized thumbnail display falls back to fill"
     )
+
+    check(
+        Prefs.slowLoadRefreshSeconds(using: defaults) == Prefs.defaultSlowLoadRefreshSeconds,
+        "slow-load refresh defaults to 4 seconds"
+    )
+    defaults.set(0, forKey: Prefs.slowLoadRefreshSeconds)
+    check(Prefs.slowLoadRefreshSeconds(using: defaults) == 0, "slow-load refresh can be disabled")
+    defaults.set(99, forKey: Prefs.slowLoadRefreshSeconds)
+    check(
+        Prefs.slowLoadRefreshSeconds(using: defaults) == Prefs.defaultSlowLoadRefreshSeconds,
+        "an out-of-range slow-load delay falls back to the default"
+    )
 }
 
 // MARK: FavoritesIO

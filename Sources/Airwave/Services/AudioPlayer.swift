@@ -53,6 +53,10 @@ final class AudioPlayer: ObservableObject {
     private var endOfTrackObserver: NSObjectProtocol?
     /// ICY metadata reader task for the current direct stream, if any.
     private var icyTask: Task<Void, Never>?
+    /// Watches a slow load and re-resolves the stream after the configured delay.
+    private var loadWatchdog: Task<Void, Never>?
+    private var loadWatchdogAttempts = 0
+    private static let maxLoadRefreshAttempts = 3
     /// Guards async playback work; stale work is dropped if the token is no
     /// longer current (a newer play, or a stop).
     private var generation = PlaybackGeneration()
@@ -88,11 +92,13 @@ final class AudioPlayer: ObservableObject {
 
     func play(
         urlString: String, title: String? = nil, artwork knownArtwork: Data? = nil, customArtwork: Bool = false,
-        favoriteID: Favorite.ID? = nil
+        favoriteID: Favorite.ID? = nil, isRetry: Bool = false
     ) async {
         hasStarted = true
         lastError = nil
         failedFavoriteID = nil
+        // A user-initiated play restarts the slow-load watchdog; a retry keeps it.
+        if !isRetry { cancelLoadWatchdog() }
         let playGeneration = generation.begin()
         let previous = Snapshot(
             url: sourceURL, title: self.title, artwork: artwork, artworkIsCustom: artworkIsCustom,
@@ -138,6 +144,7 @@ final class AudioPlayer: ObservableObject {
         self.title = title ?? urlString
         artwork = knownArtwork
         updateNowPlaying()
+        startLoadWatchdogIfNeeded()
     }
 
     /// Swaps in the resolved stream, starts playback and wires up failure handling.
@@ -164,6 +171,31 @@ final class AudioPlayer: ObservableObject {
         var options: [String: Any] = [:]
         if !resolved.headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = resolved.headers }
         return AVPlayerItem(asset: AVURLAsset(url: resolved.streamURL, options: options))
+    }
+
+    /// Starts the slow-load watchdog for the current loading episode, unless one
+    /// is already running or auto-refresh is disabled.
+    private func startLoadWatchdogIfNeeded() {
+        guard loadWatchdog == nil else { return }
+        let seconds = Prefs.slowLoadRefreshSeconds()
+        guard seconds > 0 else { return }
+        loadWatchdog = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
+                guard let self, !Task.isCancelled, self.state == .loading else { return }
+                guard self.loadWatchdogAttempts < Self.maxLoadRefreshAttempts else { return }
+                self.loadWatchdogAttempts += 1
+                await self.play(
+                    urlString: self.sourceURL, title: self.title, artwork: self.artwork,
+                    customArtwork: self.artworkIsCustom, favoriteID: self.currentFavoriteID, isRetry: true)
+            }
+        }
+    }
+
+    private func cancelLoadWatchdog() {
+        loadWatchdog?.cancel()
+        loadWatchdog = nil
+        loadWatchdogAttempts = 0
     }
 
     /// Refreshes the artwork even when a cached one was supplied (from
@@ -371,6 +403,7 @@ final class AudioPlayer: ObservableObject {
         // Invalidate in-flight work so a stream still resolving (or artwork still
         // downloading) cannot start playback or paint artwork after the stop.
         generation.invalidate()
+        cancelLoadWatchdog()
         removeEndOfTrackObserver()
         removeDurationObserver()
         removeTrimEndObserver()
@@ -426,6 +459,7 @@ final class AudioPlayer: ObservableObject {
         case .paused: if player.currentItem != nil && state != .loading { state = .paused }
         @unknown default: break
         }
+        if state != .loading { cancelLoadWatchdog() }
         updateNowPlaying()
     }
 

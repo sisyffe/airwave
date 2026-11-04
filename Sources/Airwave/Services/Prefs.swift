@@ -39,6 +39,10 @@ enum Prefs {
     static let defaultShowExtraSeekControls = false
     static let thumbnailDisplayMode = "thumbnailDisplayMode"
     static let defaultThumbnailDisplayMode = ThumbnailDisplayMode.fill
+    static let slowLoadRefreshSeconds = "slowLoadRefreshSeconds"
+    static let defaultSlowLoadRefreshSeconds = 4
+    /// Discrete auto-refresh delays offered in Settings; 0 means never.
+    static let slowLoadRefreshOptions = [2, 3, 4, 6, 8, 10, 0]
 
     static func shouldQuitAfterLastWindowClosed(using defaults: UserDefaults = .standard) -> Bool {
         guard defaults.object(forKey: quitOnLastWindowClosed) != nil else {
@@ -62,5 +66,15 @@ enum Prefs {
             let mode = ThumbnailDisplayMode(rawValue: raw)
         else { return defaultThumbnailDisplayMode }
         return mode
+    }
+
+    /// Delay before auto-refreshing a still-loading stream, in seconds (0 = never).
+    /// Falls back to the default when unset or not one of the offered values.
+    static func slowLoadRefreshSeconds(using defaults: UserDefaults = .standard) -> Int {
+        guard defaults.object(forKey: slowLoadRefreshSeconds) != nil else {
+            return defaultSlowLoadRefreshSeconds
+        }
+        let stored = defaults.integer(forKey: slowLoadRefreshSeconds)
+        return slowLoadRefreshOptions.contains(stored) ? stored : defaultSlowLoadRefreshSeconds
     }
 }
