@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 /// metadata-only JSON import/export.
 struct FavoritesPreferences: View {
     @EnvironmentObject var favorites: FavoritesStore
+    @ObservedObject private var router = SettingsRouter.shared
     @State private var selectedFavoriteID: Favorite.ID?
     @State private var message: String?
     @State private var refreshProgress: (completed: Int, total: Int)?
@@ -110,6 +111,8 @@ struct FavoritesPreferences: View {
             .frame(minWidth: 240)
         }
         .onDrop(of: [UTType.fileURL], isTargeted: nil, perform: importDroppedFile)
+        .onAppear { selectPendingFavorite() }
+        .onChange(of: router.pendingFavoriteID) { _ in selectPendingFavorite() }
         .alert("Favorites", isPresented: messageShown) {
             Button("OK") { message = nil }
         } message: {
@@ -135,6 +138,13 @@ struct FavoritesPreferences: View {
 
     private var pendingImportShown: Binding<Bool> {
         Binding(get: { pendingImport != nil }, set: { if !$0 { pendingImport = nil } })
+    }
+
+    /// Selects a favorite requested via "Show in Settings", if any.
+    private func selectPendingFavorite() {
+        guard let id = router.pendingFavoriteID else { return }
+        selectedFavoriteID = id
+        router.pendingFavoriteID = nil
     }
 
     private func add() {

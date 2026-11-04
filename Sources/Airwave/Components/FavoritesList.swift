@@ -3,8 +3,6 @@ import SwiftUI
 struct FavoritesList: View {
     @EnvironmentObject var player: AudioPlayer
     @EnvironmentObject var favorites: FavoritesStore
-    @State private var renamingID: Favorite.ID?
-    @State private var renameText = ""
 
     var body: some View {
         if favorites.items.isEmpty {
@@ -18,16 +16,8 @@ struct FavoritesList: View {
                     FavoriteRow(
                         favorite: favorite,
                         isCurrent: player.sourceURL == favorite.url && player.isPlaying,
-                        isRenaming: renamingID == favorite.id,
-                        renameText: $renameText,
                         onPlay: { play(favorite) },
-                        onRenameStart: {
-                            renameText = favorite.name; renamingID = favorite.id
-                        },
-                        onRenameCommit: { newName in
-                            favorites.rename(favorite, to: newName)
-                            renamingID = nil
-                        },
+                        onShowInSettings: { SettingsRouter.shared.show(favoriteID: favorite.id) },
                         onDelete: { favorites.remove(favorite) })
                 }
                 .onMove { indices, newOffset in
@@ -49,18 +39,13 @@ struct FavoritesList: View {
 }
 
 /// One favorites row: decorative drag handle, thumbnail, name, now-playing
-/// badge, "…" menu. Reordering is handled natively by the enclosing List;
-/// renaming happens in place, Finder-style.
+/// badge, "…" menu. Reordering is handled natively by the enclosing List.
 private struct FavoriteRow: View {
     let favorite: Favorite
     let isCurrent: Bool
-    let isRenaming: Bool
-    @Binding var renameText: String
     let onPlay: () -> Void
-    let onRenameStart: () -> Void
-    let onRenameCommit: (String) -> Void
+    let onShowInSettings: () -> Void
     let onDelete: () -> Void
-    @FocusState private var isRenameFocused: Bool
 
     var body: some View {
         HStack(spacing: 6) {
@@ -69,29 +54,16 @@ private struct FavoriteRow: View {
                 .frame(width: 12)
                 .foregroundStyle(.tertiary)
                 .help("Drag to reorder")
-            if isRenaming {
-                Thumbnail(data: favorite.thumbnail, size: 24)
-                TextField("Name", text: $renameText)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .focused($isRenameFocused)
-                    .onSubmit { onRenameCommit(renameText) }
-                    .onChange(of: isRenameFocused) { focused in
-                        if !focused { onRenameCommit(renameText) }
-                    }
-                    .task { isRenameFocused = true }
-            } else {
-                // A Button (rather than a row-wide tap gesture) keeps
-                // click-to-play from blocking the List's native reordering.
-                Button(action: onPlay) {
-                    HStack(spacing: 6) {
-                        Thumbnail(data: favorite.thumbnail, size: 24)
-                        Text(favorite.name).font(.caption).lineLimit(1)
-                    }
-                    .contentShape(Rectangle())
+            // A Button (rather than a row-wide tap gesture) keeps click-to-play
+            // from blocking the List's native reordering.
+            Button(action: onPlay) {
+                HStack(spacing: 6) {
+                    Thumbnail(data: favorite.thumbnail, size: 24)
+                    Text(favorite.name).font(.caption).lineLimit(1)
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             Spacer(minLength: 0)
             if isCurrent {
                 Image(systemName: "speaker.wave.2.fill").font(.caption2).foregroundStyle(.tint)
@@ -101,7 +73,7 @@ private struct FavoriteRow: View {
                 FavoriteMenuItems(
                     favorite: favorite,
                     onPlay: onPlay,
-                    onRename: onRenameStart,
+                    onShowInSettings: onShowInSettings,
                     onDelete: onDelete)
             } label: {
                 Image(systemName: "ellipsis")
@@ -119,7 +91,7 @@ private struct FavoriteRow: View {
             FavoriteMenuItems(
                 favorite: favorite,
                 onPlay: onPlay,
-                onRename: onRenameStart,
+                onShowInSettings: onShowInSettings,
                 onDelete: onDelete)
         }
     }
@@ -130,14 +102,14 @@ private struct FavoriteRow: View {
 private struct FavoriteMenuItems: View {
     let favorite: Favorite
     let onPlay: () -> Void
-    let onRename: () -> Void
+    let onShowInSettings: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
         Button("Play", action: onPlay)
         Button("Copy Link") { Clipboard.copy(favorite.url) }
         Divider()
-        Button("Rename…", action: onRename)
+        Button("Show in Settings", action: onShowInSettings)
         Button("Delete", role: .destructive, action: onDelete)
     }
 }
