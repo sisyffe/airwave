@@ -96,35 +96,47 @@ do {
     let encoded = try! FavoritesIO.encode(items)
     let json = try! JSONSerialization.jsonObject(with: encoded) as! [[String: Any]]
     check(
-        json.allSatisfy { Set($0.keys) == Set(["id", "name", "url"]) },
-        "export includes only favorite id, name, and URL"
+        json.allSatisfy { Set($0.keys) == Set(["name", "url"]) },
+        "export includes only favorite name and URL"
     )
 
     let decoded = try! FavoritesIO.decode(encoded)
     let metadataRoundTrips = decoded.count == items.count
         && zip(decoded, items).allSatisfy { exported, original in
-            exported.id == original.id && exported.name == original.name && exported.url == original.url
+            exported.name == original.name && exported.url == original.url
         }
     check(
         metadataRoundTrips,
         "export/import preserves favorite metadata"
     )
     check(decoded.allSatisfy { $0.thumbnail == nil }, "imported favorites have no exported thumbnail")
+    check(
+        decoded.map(\.id) != items.map(\.id),
+        "import regenerates favorite UUIDs"
+    )
 
+    // A duplicate link under a different name is allowed and kept; an exact
+    // (name, link, trim) match is auto-merged.
     let incoming = [
+        Favorite(name: "Station One", url: "https://example.com/one.mp3"),
         Favorite(name: "Duplicate", url: "https://example.com/one.mp3"),
         Favorite(name: "New", url: "https://example.com/three.aac"),
         Favorite(name: "Empty", url: "")
     ]
     let merged = FavoritesIO.merge(incoming, into: items)
-    check(merged.added == 1, "merge counts only new, non-empty URLs")
+    check(merged.added == 2, "merge adds new identities and skips exact duplicates")
     check(
         merged.items.map(\.url) == [
             "https://example.com/one.mp3",
             "https://example.com/two.m3u8",
+            "https://example.com/one.mp3",
             "https://example.com/three.aac"
         ],
         "merge preserves existing order and appends new entries"
+    )
+    check(
+        merged.items.map(\.name) == ["Station One", "Station Two", "Duplicate", "New"],
+        "merge suffixes only on name collisions"
     )
 
     let exported = try! FavoritesIO.decode(FavoritesIO.encode(items + [Favorite(name: "Draft", url: "")]))
@@ -149,6 +161,38 @@ do {
         roundTrip.first?.startOffset == 30 && roundTrip.first?.endOffset == 90,
         "trim offsets round-trip through export/import"
     )
+}
+
+// MARK: FavoriteNaming
+
+do {
+    check(
+        FavoriteNaming.unique("Jazz", url: "https://example.com/j", taken: []) == "Jazz",
+        "a free name is kept"
+    )
+    check(
+        FavoriteNaming.unique("Jazz", url: "https://example.com/j", taken: ["Jazz"]) == "Jazz 2",
+        "a taken name is suffixed"
+    )
+    check(
+        FavoriteNaming.unique("Jazz", url: "https://example.com/j", taken: ["Jazz", "Jazz 2"]) == "Jazz 3",
+        "suffixing skips existing numbered names"
+    )
+    check(
+        FavoriteNaming.unique("   ", url: "https://example.com/j", taken: []) == "https://example.com/j",
+        "a blank name falls back to the URL"
+    )
+}
+
+// MARK: Favorite identity
+
+do {
+    let base = Favorite(name: "Song", url: "https://example.com/s.mp3")
+    let sameTrim = Favorite(name: "Song", url: "https://example.com/s.mp3", startOffset: 30, endOffset: 60)
+    let otherTrim = Favorite(name: "Song", url: "https://example.com/s.mp3", startOffset: 90, endOffset: 60)
+    check(base.identityKey == Favorite(name: "Song", url: "https://example.com/s.mp3").identityKey, "identity ignores the UUID")
+    check(base.identityKey != sameTrim.identityKey, "different trim offsets are different identities")
+    check(sameTrim.identityKey != otherTrim.identityKey, "different trims of one link are distinct")
 }
 
 // MARK: RecentTrack

@@ -41,6 +41,9 @@ final class AudioPlayer: ObservableObject {
     private var trimStartOffset: TimeInterval?
     private var trimEndOffset: TimeInterval?
     private var trimApplied = false
+    /// The favorite being played, when known, so its trim (and artwork) resolve
+    /// even when several favorites share the same link.
+    private var currentFavoriteID: Favorite.ID?
     /// Boundary observer that fires when playback crosses the trimmed end.
     private var trimEndObserver: Any?
     /// Fires when the current finite item reaches its end, to replay or stop it.
@@ -77,19 +80,27 @@ final class AudioPlayer: ObservableObject {
         let wasPlaying: Bool
         let trimStartOffset: TimeInterval?
         let trimEndOffset: TimeInterval?
+        let favoriteID: Favorite.ID?
     }
 
-    func play(urlString: String, title: String? = nil, artwork knownArtwork: Data? = nil, customArtwork: Bool = false) async {
+    func play(
+        urlString: String, title: String? = nil, artwork knownArtwork: Data? = nil, customArtwork: Bool = false,
+        favoriteID: Favorite.ID? = nil
+    ) async {
         hasStarted = true
         lastError = nil
         let playGeneration = generation.begin()
         let previous = Snapshot(
             url: sourceURL, title: self.title, artwork: artwork, artworkIsCustom: artworkIsCustom,
             item: player.currentItem, wasPlaying: isPlaying, trimStartOffset: trimStartOffset,
-            trimEndOffset: trimEndOffset)
+            trimEndOffset: trimEndOffset, favoriteID: currentFavoriteID)
         artworkIsCustom = customArtwork
+        currentFavoriteID = favoriteID
         // A favorite may define a trim range; it applies wherever the URL plays.
-        let favorite = FavoritesStore.shared.favorite(for: urlString)
+        // An explicit id wins so duplicate links with different trims stay distinct.
+        let favorite =
+            favoriteID.flatMap { FavoritesStore.shared.favorite(id: $0) }
+            ?? FavoritesStore.shared.favorite(for: urlString)
         trimStartOffset = favorite?.startOffset
         trimEndOffset = favorite?.endOffset
         trimApplied = false
@@ -184,6 +195,7 @@ final class AudioPlayer: ObservableObject {
         // the item being brought back.
         trimStartOffset = snapshot.trimStartOffset
         trimEndOffset = snapshot.trimEndOffset
+        currentFavoriteID = snapshot.favoriteID
         trimApplied = false
         removeTrimEndObserver()
         if let item = snapshot.item, player.currentItem !== item {
@@ -305,7 +317,11 @@ final class AudioPlayer: ObservableObject {
     func resume() {
         guard player.currentItem != nil else {
             if !sourceURL.isEmpty {
-                Task { await play(urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom) }
+                Task {
+                    await play(
+                        urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom,
+                        favoriteID: currentFavoriteID)
+                }
             }
             return
         }
@@ -336,7 +352,11 @@ final class AudioPlayer: ObservableObject {
     /// existing title and artwork so the UI does not flicker.
     func refresh() {
         guard !sourceURL.isEmpty else { return }
-        Task { await play(urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom) }
+        Task {
+            await play(
+                urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom,
+                favoriteID: currentFavoriteID)
+        }
     }
 
     func stop() {
@@ -348,6 +368,7 @@ final class AudioPlayer: ObservableObject {
         removeTrimEndObserver()
         trimStartOffset = nil
         trimEndOffset = nil
+        currentFavoriteID = nil
         trimApplied = false
         player.pause()
         player.replaceCurrentItem(with: nil)

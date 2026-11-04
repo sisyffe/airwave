@@ -110,7 +110,7 @@ struct ContentView: View {
         Task {
             await player.play(
                 urlString: url, title: favorite?.name, artwork: favorite?.thumbnail,
-                customArtwork: favorite?.hasCustomThumbnail == true)
+                customArtwork: favorite?.hasCustomThumbnail == true, favoriteID: favorite?.id)
         }
     }
 
