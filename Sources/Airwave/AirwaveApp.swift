@@ -83,6 +83,16 @@ struct AirwaveApp: App {
 
 /// Closing the last window quits by default; the user can opt into macOS keep-running behavior.
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Drops thumbnail resources no longer referenced by any favorite or recent
+    /// entry, once both stores have loaded.
+    @MainActor
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let keys =
+            Set(FavoritesStore.shared.items.compactMap(\.thumbnailKey))
+            .union(RecentsStore.shared.items.compactMap(\.thumbnailKey))
+        ThumbnailCache.prune(keeping: keys)
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         Prefs.shouldQuitAfterLastWindowClosed()
     }
