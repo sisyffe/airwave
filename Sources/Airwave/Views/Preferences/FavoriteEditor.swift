@@ -85,15 +85,33 @@ struct FavoriteEditor: View {
                         .strokeBorder(isDropTargeted ? Color.accentColor : .clear, lineWidth: 2)
                 }
                 .onDrop(of: [UTType.image], isTargeted: $isDropTargeted, perform: handleDrop)
-            HStack(spacing: 6) {
-                Button("Paste Image") { pasteThumbnail() }
-                Button("Choose Image…") { showImporter = true }
+            HStack(spacing: 4) {
+                Text("Thumbnail:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Button {
+                    pasteThumbnail()
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
+                }
+                .help("Paste an image from the clipboard")
+                Button {
+                    showImporter = true
+                } label: {
+                    Image(systemName: "photo")
+                }
+                .help("Choose an image file")
+                if favorite.hasCustomThumbnail == true {
+                    Button {
+                        resetThumbnail()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .help("Reset to the fetched artwork")
+                }
             }
+            .buttonStyle(.borderless)
             .controlSize(.small)
-            if favorite.hasCustomThumbnail == true {
-                Button("Reset to default") { resetThumbnail() }
-                    .controlSize(.small)
-            }
             if let message {
                 Text(message).font(.caption2).foregroundStyle(.orange)
             }
