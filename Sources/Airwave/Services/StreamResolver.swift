@@ -12,6 +12,8 @@ enum StreamResolver {
         var headers: [String: String] = [:]
         /// True for direct audio/HLS links (as opposed to resolved YouTube pages).
         var isDirect: Bool = false
+        /// MIME type learned while probing, when available; drives ICY eligibility.
+        var contentType: String? = nil
     }
 
     enum ResolveError: LocalizedError {
@@ -27,11 +29,15 @@ enum StreamResolver {
         }
     }
 
-    /// URL extensions that are handed straight to AVPlayer.
+    /// URL extensions that are handed straight to AVPlayer without probing.
     private static let directExtensions: Set<String> = ["mp3", "aac", "m4a", "m3u8", "ogg", "opus", "wav", "flac"]
+    /// Extensions AVPlayer cannot resolve, rejected with a clear message.
+    private static let unsupportedExtensions: Set<String> = ["pls"]
 
     private static let browserUserAgent = "Mozilla/5.0 (Macintosh)"
     private static let pageRequestTimeout: TimeInterval = 8
+    /// Upper bound on how many bytes are read to sniff a stream's body.
+    private static let probeByteCount = 2048
     /// Upper bound on how much page HTML to scan for metadata tags.
     private static let maxHTMLBytes = 300_000
     private static let faviconServiceBaseURL = "https://www.google.com/s2/favicons?sz=128&domain="
@@ -43,10 +49,64 @@ enum StreamResolver {
         guard let url = URLValidation.httpURL(from: trimmed) else {
             throw ResolveError.invalidURL
         }
-        if directExtensions.contains(url.pathExtension.lowercased()) {
+        if isYouTubePage(url) {
+            return try await resolveYouTube(url)
+        }
+        let ext = url.pathExtension.lowercased()
+        if unsupportedExtensions.contains(ext) {
+            throw ResolveError.unsupported
+        }
+        if directExtensions.contains(ext) {
             return Resolved(streamURL: url, title: nil, isDirect: true)
         }
-        return try await resolveYouTube(url)
+        return try await resolveDirect(url)
+    }
+
+    // MARK: Direct / extensionless streams
+
+    /// Resolves a URL with no recognized extension by sniffing its content type
+    /// (and, when needed, its leading bytes). HTML pages are rejected; anything
+    /// else is handed to AVPlayer, and a probe failure still attempts playback.
+    private static func resolveDirect(_ url: URL) async throws -> Resolved {
+        guard let kind = await probe(url) else {
+            return Resolved(streamURL: url, title: nil, isDirect: true)
+        }
+        switch kind {
+        case .page:
+            throw ResolveError.unsupported
+        case .hls, .audio:
+            return Resolved(streamURL: url, title: nil, isDirect: true)
+        }
+    }
+
+    /// Issues a ranged request and classifies the response from its MIME type,
+    /// falling back to the leading bytes. Reads at most `probeByteCount` bytes so
+    /// a live stream that ignores `Range` does not stall resolution.
+    private static func probe(_ url: URL) async -> StreamSniffer.Kind? {
+        var request = URLRequest(url: url, timeoutInterval: pageRequestTimeout)
+        request.setValue(browserUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("bytes=0-\(probeByteCount - 1)", forHTTPHeaderField: "Range")
+        let task = Task { () -> StreamSniffer.Kind? in
+            do {
+                let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                guard let http = response as? HTTPURLResponse else { return nil }
+                if let kind = StreamSniffer.kind(forMimeType: http.mimeType) { return kind }
+                var body = Data()
+                body.reserveCapacity(probeByteCount)
+                var iterator = bytes.makeAsyncIterator()
+                while body.count < probeByteCount, let byte = try await iterator.next() {
+                    body.append(byte)
+                }
+                return StreamSniffer.kind(forBody: body, mimeType: http.mimeType)
+            } catch {
+                return nil
+            }
+        }
+        return await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     // MARK: Thumbnails

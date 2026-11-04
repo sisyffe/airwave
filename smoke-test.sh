@@ -31,6 +31,7 @@ swiftc -swift-version 5 \
   Sources/Airwave/Services/Recents.swift \
   Sources/Airwave/Services/ThumbnailCache.swift \
   Sources/Airwave/Services/ICYMetadata.swift \
+  Sources/Airwave/Services/StreamSniffer.swift \
   Sources/Airwave/Services/PlaybackGeneration.swift \
   Sources/Airwave/Utilities/URLValidation.swift \
   Sources/Airwave/Utilities/UserDefaultsJSON.swift \

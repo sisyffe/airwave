@@ -192,11 +192,44 @@ do {
     check(URLValidation.httpURL(from: "https:///audio.mp3") == nil, "URLs without a host are rejected")
 }
 
+// MARK: StreamSniffer
+
+do {
+    check(
+        StreamSniffer.kind(forMimeType: "application/vnd.apple.mpegurl; charset=utf-8") == .hls,
+        "HLS MIME types classify as hls"
+    )
+    check(StreamSniffer.kind(forMimeType: "audio/mpeg") == .audio, "audio MIME types classify as audio")
+    check(StreamSniffer.kind(forMimeType: "application/octet-stream") == .audio, "octet-stream classifies as audio")
+    check(StreamSniffer.kind(forMimeType: "text/html") == .page, "HTML MIME types classify as page")
+    check(StreamSniffer.kind(forMimeType: nil) == nil, "a missing MIME type is inconclusive")
+    check(
+        StreamSniffer.kind(forBody: Data("#EXTM3U\n#EXT-X-VERSION:3".utf8), mimeType: nil) == .hls,
+        "an #EXTM3U body classifies as hls"
+    )
+    check(
+        StreamSniffer.kind(forBody: Data("<!DOCTYPE html><html>".utf8), mimeType: nil) == .page,
+        "an HTML body classifies as page"
+    )
+    check(
+        StreamSniffer.kind(forBody: Data([0x00, 0x01, 0x02, 0x03]), mimeType: nil) == nil,
+        "an unknown body is inconclusive"
+    )
+}
+
 // MARK: ICYMetadata
 
 do {
     check(ICYMetadata.isEligible(URL(string: "https://example.com/stream.mp3")!), "mp3 is ICY-eligible")
     check(!ICYMetadata.isEligible(URL(string: "https://example.com/stream.m3u8")!), "m3u8 is not ICY-eligible")
+    check(
+        ICYMetadata.isEligible(URL(string: "https://example.com/live")!, contentType: "audio/mpeg"),
+        "an extensionless audio stream is ICY-eligible"
+    )
+    check(
+        !ICYMetadata.isEligible(URL(string: "https://example.com/live")!, contentType: "application/vnd.apple.mpegurl"),
+        "an extensionless HLS stream is not ICY-eligible"
+    )
 
     func block(_ text: String) -> [UInt8] { Array(text.utf8) }
     check(

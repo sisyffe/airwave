@@ -369,7 +369,8 @@ final class AudioPlayer: ObservableObject {
     /// Starts reading ICY metadata for direct radio streams. Adopts the station
     /// name as the title when the title is still just the raw URL.
     private func startICYIfEligible(_ resolved: StreamResolver.Resolved, playGeneration: Int) {
-        guard resolved.isDirect, ICYMetadata.isEligible(resolved.streamURL) else { return }
+        guard resolved.isDirect, ICYMetadata.isEligible(resolved.streamURL, contentType: resolved.contentType)
+        else { return }
         let url = resolved.streamURL
         icyTask = Task { [weak self] in
             for await info in ICYMetadata.stream(from: url) {
