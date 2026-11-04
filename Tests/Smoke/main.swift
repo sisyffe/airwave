@@ -277,6 +277,14 @@ do {
     check(URLValidation.httpURL(from: "https:///audio.mp3") == nil, "URLs without a host are rejected")
 }
 
+// MARK: Volume
+
+do {
+    check(Volume.stops == [0, 0.25, 0.5, 0.75, 1.0], "volume has five evenly spaced stops")
+    check(Volume.stops.last == Volume.maximum, "the last stop is the maximum")
+    check(Volume.stops.first == 0, "the first stop is zero")
+}
+
 // MARK: StreamSniffer
 
 do {

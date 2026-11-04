@@ -82,7 +82,13 @@ struct AirwaveApp: App {
 }
 
 /// Closing the last window quits by default; the user can opt into macOS keep-running behavior.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
+    /// Disables the app's shortcuts while a text field is being edited, so the
+    /// standard ⌘C/⌘V/⌘↑/⌘↓ editing behavior wins.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        !(NSApp.keyWindow?.firstResponder is NSTextView)
+    }
+
     /// Drops thumbnail resources no longer referenced by any favorite or recent
     /// entry, once both stores have loaded.
     @MainActor
@@ -91,6 +97,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Set(FavoritesStore.shared.items.compactMap(\.thumbnailKey))
             .union(RecentsStore.shared.items.compactMap(\.thumbnailKey))
         ThumbnailCache.prune(keeping: keys)
+        installControlsMenu()
+    }
+
+    // MARK: Shortcuts
+
+    /// Installs the app's keyboard shortcuts as AppKit menu items. They are
+    /// disabled while a text field is first responder, so ⌘C/⌘V/⌘↑/⌘↓ keep their
+    /// standard text-editing behavior.
+    @MainActor
+    private func installControlsMenu() {
+        guard let mainMenu = NSApp.mainMenu, mainMenu.item(withTitle: "Controls") == nil else { return }
+        let menu = NSMenu(title: "Controls")
+        menu.addItem(item("Toggle Favorite", #selector(toggleFavorite), "f"))
+        menu.addItem(item("Copy Current Link", #selector(copyCurrentLink), "c"))
+        menu.addItem(item("Paste and Play", #selector(pasteAndPlay), "v"))
+        menu.addItem(.separator())
+        menu.addItem(item("Volume Up", #selector(volumeUp), String(UnicodeScalar(NSUpArrowFunctionKey)!)))
+        menu.addItem(item("Volume Down", #selector(volumeDown), String(UnicodeScalar(NSDownArrowFunctionKey)!)))
+
+        let root = NSMenuItem(title: "Controls", action: nil, keyEquivalent: "")
+        root.submenu = menu
+        let index = mainMenu.item(withTitle: "Playback").map { mainMenu.index(of: $0) + 1 } ?? mainMenu.numberOfItems
+        mainMenu.insertItem(root, at: index)
+    }
+
+    private func item(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.target = self
+        item.keyEquivalentModifierMask = .command
+        return item
+    }
+
+    @objc private func toggleFavorite() {
+        NotificationCenter.default.post(name: .airwaveToggleFavorite, object: nil)
+    }
+
+    @objc private func copyCurrentLink() {
+        Task { @MainActor in
+            let url = AudioPlayer.shared.sourceURL
+            if !url.isEmpty { Clipboard.copy(url) }
+        }
+    }
+
+    @objc private func pasteAndPlay() {
+        Task { @MainActor in
+            guard let pasted = Clipboard.string,
+                let token = pasted.split(whereSeparator: \.isWhitespace).first,
+                URLValidation.httpURL(from: String(token)) != nil
+            else { return }
+            let url = String(token)
+            let favorite = FavoritesStore.shared.favorite(for: url)
+            await AudioPlayer.shared.play(
+                urlString: url, title: favorite?.name, artwork: favorite?.thumbnail,
+                customArtwork: favorite?.hasCustomThumbnail == true, favoriteID: favorite?.id)
+        }
+    }
+
+    @objc private func volumeUp() {
+        Task { @MainActor in AudioPlayer.shared.stepVolume(up: true) }
+    }
+
+    @objc private func volumeDown() {
+        Task { @MainActor in AudioPlayer.shared.stepVolume(up: false) }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

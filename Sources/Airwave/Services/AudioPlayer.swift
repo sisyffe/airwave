@@ -375,6 +375,16 @@ final class AudioPlayer: ObservableObject {
     func pause() { player.pause() }
     func toggle() { isPlaying ? pause() : resume() }
 
+    /// Moves the volume to the next or previous stop (⌘↑ / ⌘↓).
+    func stepVolume(up: Bool) {
+        let stops = Volume.stops
+        if up {
+            volume = stops.first { $0 > volume + 0.001 } ?? Volume.maximum
+        } else {
+            volume = stops.last { $0 < volume - 0.001 } ?? 0
+        }
+    }
+
     /// Jumps forward (positive) or backward (negative) by `seconds`, clamped to
     /// the track. No-op for live streams, which have no seekable timeline.
     func skip(by seconds: TimeInterval) {
@@ -506,4 +516,6 @@ final class AudioPlayer: ObservableObject {
 extension Notification.Name {
     /// Posted when a thumbnail is fetched for a URL (object: url String, userInfo["data"]: Data).
     static let airwaveArtwork = Notification.Name("airwaveArtwork")
+    /// Posted to toggle the current track's favorite state (⌘F).
+    static let airwaveToggleFavorite = Notification.Name("airwaveToggleFavorite")
 }
