@@ -68,6 +68,21 @@ do {
     )
 
     check(!Prefs.defaultShowExtraSeekControls, "extra seek controls default to off")
+
+    check(
+        Prefs.thumbnailDisplayMode(using: defaults) == .fill,
+        "thumbnail display defaults to fill when unset"
+    )
+    defaults.set(ThumbnailDisplayMode.blurredFill.rawValue, forKey: Prefs.thumbnailDisplayMode)
+    check(
+        Prefs.thumbnailDisplayMode(using: defaults) == .blurredFill,
+        "thumbnail display respects a stored value"
+    )
+    defaults.set("nonsense", forKey: Prefs.thumbnailDisplayMode)
+    check(
+        Prefs.thumbnailDisplayMode(using: defaults) == .fill,
+        "an unrecognized thumbnail display falls back to fill"
+    )
 }
 
 // MARK: FavoritesIO

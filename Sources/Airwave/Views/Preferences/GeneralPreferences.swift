@@ -5,6 +5,7 @@ import ServiceManagement
 struct GeneralPreferences: View {
     @AppStorage(Prefs.hotstart) private var hotstart = true
     @AppStorage(Prefs.quitOnLastWindowClosed) private var quitOnLastWindowClosed = Prefs.defaultQuitOnLastWindowClosed
+    @AppStorage(Prefs.thumbnailDisplayMode) private var thumbnailDisplayMode = Prefs.defaultThumbnailDisplayMode
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -22,6 +23,13 @@ struct GeneralPreferences: View {
                     }
                 }
                 .help("Requires running Airwave as a bundled .app")
+
+            Picker("Thumbnail display", selection: $thumbnailDisplayMode) {
+                ForEach(ThumbnailDisplayMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .help("How artwork is fitted into its frame: crop to fill, letterbox, or fit over a blurred copy.")
         }
         .formStyle(.grouped)
     }
