@@ -16,6 +16,7 @@ struct FavoritesList: View {
                     FavoriteRow(
                         favorite: favorite,
                         isCurrent: player.sourceURL == favorite.url && player.isPlaying,
+                        hasError: player.failedFavoriteID == favorite.id,
                         onPlay: { play(favorite) },
                         onShowInSettings: { SettingsRouter.shared.show(favoriteID: favorite.id) },
                         onDelete: { favorites.remove(favorite) })
@@ -43,6 +44,7 @@ struct FavoritesList: View {
 private struct FavoriteRow: View {
     let favorite: Favorite
     let isCurrent: Bool
+    let hasError: Bool
     let onPlay: () -> Void
     let onShowInSettings: () -> Void
     let onDelete: () -> Void
@@ -68,6 +70,12 @@ private struct FavoriteRow: View {
             if isCurrent {
                 Image(systemName: "speaker.wave.2.fill").font(.caption2).foregroundStyle(.tint)
                     .help("Currently playing")
+            }
+            if hasError {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .help("Couldn't load this favorite")
             }
             Menu {
                 FavoriteMenuItems(

@@ -92,10 +92,29 @@ struct ContentView: View {
         .sheet(isPresented: $showAddFavorite) {
             AddFavoriteSheet(initialName: player.title, url: player.sourceURL, thumbnail: player.artwork)
         }
-        .alert("Playback failed", isPresented: errorShown) {
-            Button("OK") { player.clearError() }
+        .alert(
+            player.failedFavoriteID == nil ? "Playback failed" : "Couldn't load this favorite",
+            isPresented: errorShown
+        ) {
+            if let id = player.failedFavoriteID, let favorite = favorites.favorite(id: id) {
+                Button("Retry") { retry(favorite) }
+                Button("Edit Link…") { SettingsRouter.shared.show(favoriteID: id) }
+                Button("Delete", role: .destructive) { favorites.remove(favorite) }
+                Button("Cancel", role: .cancel) {}
+            } else {
+                Button("OK") { player.clearError() }
+            }
         } message: {
             Text(player.lastError ?? "")
+        }
+    }
+
+    private func retry(_ favorite: Favorite) {
+        player.clearError()
+        Task {
+            await player.play(
+                urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail,
+                customArtwork: favorite.hasCustomThumbnail == true, favoriteID: favorite.id)
         }
     }
 

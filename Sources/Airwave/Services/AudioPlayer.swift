@@ -20,6 +20,9 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var streamTitle: String?
     /// Last playback error, shown as an alert by the UI (nil = none).
     @Published private(set) var lastError: String?
+    /// The favorite whose load failed, when the failure came from a favorite, so
+    /// the UI can offer Retry / Edit / Delete (nil = generic error).
+    @Published private(set) var failedFavoriteID: Favorite.ID?
     /// Whether the current item has no known end (live stream / endless radio).
     @Published private(set) var isLive = true
     @Published var volume: Float {
@@ -89,6 +92,7 @@ final class AudioPlayer: ObservableObject {
     ) async {
         hasStarted = true
         lastError = nil
+        failedFavoriteID = nil
         let playGeneration = generation.begin()
         let previous = Snapshot(
             url: sourceURL, title: self.title, artwork: artwork, artworkIsCustom: artworkIsCustom,
@@ -114,7 +118,9 @@ final class AudioPlayer: ObservableObject {
             await refreshArtwork(resolved, page: urlString, playGeneration: playGeneration)
         } catch {
             guard generation.isCurrent(playGeneration) else { return }  // a newer link owns the UI
+            let failedID = currentFavoriteID
             restore(previous)  // keep whatever was playing…
+            failedFavoriteID = failedID
             lastError = error.localizedDescription  // …and surface the problem as an alert
         }
     }
@@ -184,7 +190,9 @@ final class AudioPlayer: ObservableObject {
     /// The item we just swapped in never actually started; put back what was playing before.
     private func itemFailed(_ item: AVPlayerItem, previous: Snapshot) {
         let message = item.error?.localizedDescription ?? "Playback failed"
+        let failedID = currentFavoriteID
         if case .loading = state { restore(previous) }
+        failedFavoriteID = failedID
         lastError = message
     }
 
@@ -406,7 +414,10 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    func clearError() { lastError = nil }
+    func clearError() {
+        lastError = nil
+        failedFavoriteID = nil
+    }
 
     private func syncState(_ status: AVPlayer.TimeControlStatus) {
         switch status {
