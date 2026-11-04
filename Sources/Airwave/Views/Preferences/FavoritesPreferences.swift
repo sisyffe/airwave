@@ -8,6 +8,7 @@ struct FavoritesPreferences: View {
     @EnvironmentObject var favorites: FavoritesStore
     @State private var selectedFavoriteID: Favorite.ID?
     @State private var message: String?
+    @State private var refreshProgress: (completed: Int, total: Int)?
 
     private var selectedBinding: Binding<Favorite>? {
         guard let id = selectedFavoriteID,
@@ -63,6 +64,20 @@ struct FavoritesPreferences: View {
                     .disabled(selectedFavoriteID == nil)
                     .help("Delete the selected favorite")
                     Spacer()
+                    if let progress = refreshProgress {
+                        Text("\(progress.completed)/\(progress.total)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    Button {
+                        refreshThumbnails()
+                    } label: {
+                        Label("Refresh thumbnails", systemImage: "arrow.triangle.2.circlepath")
+                            .labelStyle(.iconOnly)
+                    }
+                    .disabled(favorites.items.isEmpty || refreshProgress != nil)
+                    .help("Re-fetch artwork for all favorites and recents (custom images are kept)")
                     Button("Import…") { importFavorites() }
                         .help("Merge favorites from a JSON file")
                     Button("Export…") { exportFavorites() }
@@ -183,22 +198,18 @@ struct FavoritesPreferences: View {
 
     private func loadThumbnails(for importedFavorites: [Favorite]) {
         guard !importedFavorites.isEmpty else { return }
-
         Task { @MainActor in
-            await withTaskGroup(of: (String, Data?).self) { group in
-                for favorite in importedFavorites {
-                    group.addTask {
-                        let thumbnail = await StreamResolver.thumbnail(for: favorite.url)
-                        return (favorite.url, thumbnail)
-                    }
-                }
+            await ThumbnailRefresher.refresh(urls: importedFavorites.map(\.url))
+        }
+    }
 
-                for await (url, thumbnail) in group {
-                    if let thumbnail {
-                        favorites.setThumbnail(thumbnail, for: url)
-                    }
-                }
+    private func refreshThumbnails() {
+        refreshProgress = (0, 0)
+        Task { @MainActor in
+            await ThumbnailRefresher.refreshAll { completed, total in
+                refreshProgress = (completed, total)
             }
+            refreshProgress = nil
         }
     }
 }
