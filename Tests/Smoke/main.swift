@@ -163,6 +163,35 @@ do {
     )
 }
 
+// MARK: FavoritesIO conflict handling
+
+do {
+    let existing = [Favorite(name: "Station One", url: "https://example.com/one.mp3")]
+    let incoming = [
+        Favorite(name: "Station One", url: "https://example.com/one.mp3"),
+        Favorite(name: "Station One", url: "https://example.com/three.aac"),
+        Favorite(name: "Other", url: "https://example.com/two.mp3")
+    ]
+    let plan = FavoritesIO.plan(incoming, into: existing)
+    check(plan.duplicates == 1, "an exact duplicate is auto-merged")
+    check(plan.additions.count == 1 && plan.additions.first?.name == "Other", "non-conflicting entries are additions")
+    check(
+        plan.conflicts.count == 1 && plan.conflicts.first?.url == "https://example.com/three.aac",
+        "a same-name, different link is a conflict"
+    )
+
+    let suffixed = FavoritesIO.apply(plan, policy: .suffix, to: existing)
+    check(suffixed.added == 2, "suffix adds both the addition and the conflict")
+    check(suffixed.items.map(\.name) == ["Station One", "Other", "Station One 2"], "suffix keeps names unique")
+
+    let skipped = FavoritesIO.apply(plan, policy: .skip, to: existing)
+    check(skipped.added == 1 && skipped.items.count == 2, "skip drops conflicts but keeps additions")
+
+    let overwritten = FavoritesIO.apply(plan, policy: .overwrite, to: existing)
+    check(overwritten.items.first?.url == "https://example.com/three.aac", "overwrite replaces the existing favorite")
+    check(Set(overwritten.items.map(\.name)).count == overwritten.items.count, "overwrite keeps names unique")
+}
+
 // MARK: FavoriteNaming
 
 do {
