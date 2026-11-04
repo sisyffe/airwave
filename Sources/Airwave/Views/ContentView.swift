@@ -89,6 +89,12 @@ struct ContentView: View {
         .onAppear {
             isLinkFocused = true
         }
+        // Clear the input when playback starts from elsewhere (favorites, recents,
+        // hotstart) so the field never looks out of sync — unless the user is
+        // actively editing it.
+        .onChange(of: player.sourceURL) { _ in
+            if !isLinkFocused { link = "" }
+        }
         .sheet(isPresented: $showAddFavorite) {
             AddFavoriteSheet(initialName: player.title, url: player.sourceURL, thumbnail: player.artwork)
         }
