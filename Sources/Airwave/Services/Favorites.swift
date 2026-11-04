@@ -135,10 +135,6 @@ final class FavoritesStore: ObservableObject {
     }
     func remove(_ favorite: Favorite) { items.removeAll { $0.id == favorite.id } }
 
-    func rename(_ favorite: Favorite, to name: String) {
-        commitName(id: favorite.id, name: name)
-    }
-
     /// Commits a name edit, suffixing when another favorite already uses it.
     func commitName(id: Favorite.ID, name: String) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
