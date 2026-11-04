@@ -84,13 +84,6 @@ final class FavoritesStore: ObservableObject {
         applyThumbnail(stored, where: { $0.url == url && $0.hasCustomThumbnail != true })
     }
 
-    /// Store the latest thumbnail for one favorite (automatic fetch when the
-    /// playing favorite is known).
-    func setThumbnail(_ data: Data, for id: Favorite.ID) {
-        guard let stored = ThumbnailCache.store(data, for: items.first { $0.id == id }?.url ?? "") else { return }
-        applyThumbnail(stored, where: { $0.id == id && $0.hasCustomThumbnail != true })
-    }
-
     private func applyThumbnail(_ stored: (key: String, data: Data), where matches: (Favorite) -> Bool) {
         var updated = items
         var changed = false

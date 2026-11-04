@@ -80,12 +80,6 @@ enum ThumbnailCache {
         }
     }
 
-    /// Deletes the whole cache directory (used by the refresh action).
-    static func removeAll() {
-        try? FileManager.default.removeItem(at: directory)
-        entries.removeAll()
-    }
-
     /// Hydrates each item's in-memory thumbnail from its resource key, migrating
     /// any legacy embedded bytes to disk on the way. Items whose key no longer
     /// resolves are cleared so they fall back to the placeholder.
