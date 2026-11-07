@@ -82,27 +82,61 @@ struct ContentView: View {
                 SettingsAccessory()
             } else {
                 TitlebarAccessoryInstaller {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    SettingsWindow.open()
                 }
             }
         }
         .onAppear {
             isLinkFocused = true
         }
+        .onChange(of: player.sourceURL) { url in
+            clearLinkIfPlayedElsewhere(url)
+        }
         .sheet(isPresented: $showAddFavorite) {
             AddFavoriteSheet(
                 trackID: player.trackID ?? UUID(), initialName: player.title, url: player.sourceURL,
                 thumbnailKey: player.artworkKey)
         }
-        .alert("Playback failed", isPresented: errorShown) {
-            Button("OK") { player.clearError() }
-        } message: {
-            Text(player.lastError ?? "")
+        .onChange(of: player.lastError) { error in
+            guard error != nil else { return }
+            presentFailure()
         }
     }
 
-    private var errorShown: Binding<Bool> {
-        Binding(get: { player.lastError != nil }, set: { if !$0 { player.clearError() } })
+    /// A favorite that fails to load gets a modal with actions for it; any other
+    /// failure gets a plain notice. Either way the previously playing track keeps playing.
+    private func presentFailure() {
+        guard let message = player.lastError else { return }
+        let failed = player.failedRequest
+        guard let favorite = failed.flatMap({ request in favorites.favorite(id: request.trackID) }) else {
+            _ = Alerts.choose(title: "Playback failed", message: message, buttons: ["OK"])
+            player.clearError()
+            return
+        }
+        let choice = Alerts.choose(
+            title: "Couldn't load “\(favorite.name)”",
+            message: message,
+            buttons: ["Retry", "Edit Link", "Delete", "Cancel"],
+            destructive: [2])
+        player.clearError()
+        switch choice {
+        case 0:
+            Task { await player.play(PlaybackRequest(favorite: favorite)) }
+        case 1:
+            SettingsWindow.open()
+        case 2:
+            favorites.remove(favorite)
+        default:
+            break
+        }
+    }
+
+    /// Clears the field when a track starts from a list or the Dock, so the field
+    /// does not keep a stale link. Skipped while the user is editing the field, and
+    /// when the played link is the one already typed.
+    private func clearLinkIfPlayedElsewhere(_ playedURL: String) {
+        guard !isLinkFocused, playedURL != link.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        link = ""
     }
 
     private func playLink() {

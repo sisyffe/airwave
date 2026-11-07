@@ -171,14 +171,40 @@ struct FavoritesPreferences: View {
         }
         do {
             let incoming = try FavoritesIO.decode(try Data(contentsOf: url))
-            let result = FavoritesIO.merge(incoming, into: favorites.items)
-            favorites.items = result.items
-            loadThumbnails(for: result.added)
+            // Conflicts are settled before anything is written, so Cancel leaves the list untouched.
+            let plan = FavoritesIO.plan(incoming, against: favorites.items)
+            let strategy: FavoritesIO.ConflictStrategy
+            if plan.conflicts.isEmpty {
+                strategy = .createDuplicates
+            } else {
+                guard let chosen = Self.conflictStrategy(for: plan.conflicts.count) else { return }
+                strategy = chosen
+            }
+            let before = Set(favorites.items.map(\.id))
+            favorites.items = FavoritesIO.apply(plan, to: favorites.items, strategy: strategy)
+            let added = favorites.items.filter { !before.contains($0.id) }
+            loadThumbnails(for: added)
             message =
-                result.added.isEmpty
-                ? "No new favorites to import." : "Imported \(result.added.count) favorite(s)."
+                added.isEmpty
+                ? "No new favorites to import." : "Imported \(added.count) favorite(s)."
         } catch {
             message = "Import failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Asks how to resolve name conflicts. Nil when the user cancels.
+    private static func conflictStrategy(for count: Int) -> FavoritesIO.ConflictStrategy? {
+        let choice = Alerts.choose(
+            title: "Some favorites already exist",
+            message:
+                "\(count) favorite(s) in the file have the same name as one in your list. Create duplicates adds numbered copies, Overwrite replaces the existing favorite, and Ignore skips the conflicting ones.",
+            buttons: ["Create Duplicates", "Overwrite", "Ignore", "Cancel"],
+            destructive: [1])
+        switch choice {
+        case 0: return .createDuplicates
+        case 1: return .overwrite
+        case 2: return .ignore
+        default: return nil
         }
     }
 

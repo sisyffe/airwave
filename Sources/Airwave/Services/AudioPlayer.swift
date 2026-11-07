@@ -22,6 +22,8 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var streamTitle: String?
     /// Last playback error, shown as an alert by the UI (nil = none).
     @Published private(set) var lastError: String?
+    /// The request whose load failed, so the UI can offer actions on its favorite.
+    @Published private(set) var failedRequest: PlaybackRequest?
     /// Whether the current item has no known end (live stream / endless radio).
     @Published private(set) var isLive = true
     @Published var volume: Float {
@@ -85,6 +87,7 @@ final class AudioPlayer: ObservableObject {
     func play(_ request: PlaybackRequest) async {
         hasStarted = true
         lastError = nil
+        failedRequest = nil
         let playGeneration = generation.begin()
         let previous = Snapshot(
             trackID: trackID, url: sourceURL, title: self.title, artworkKey: artworkKey, artworkIsCustom: artworkIsCustom,
@@ -106,6 +109,7 @@ final class AudioPlayer: ObservableObject {
             guard generation.isCurrent(playGeneration) else { return }  // a newer link owns the UI
             restore(previous)  // keep whatever was playing…
             lastError = error.localizedDescription  // …and surface the problem as an alert
+            failedRequest = request
         }
     }
 
@@ -131,7 +135,7 @@ final class AudioPlayer: ObservableObject {
         statusObservation = item.observe(\.status) { [weak self] item, _ in
             Task { @MainActor in
                 guard let self, item.status == .failed, self.generation.isCurrent(playGeneration) else { return }
-                self.itemFailed(item, previous: previous)
+                self.itemFailed(item, request: request, previous: previous)
             }
         }
         observeEndOfTrack(of: item)
@@ -185,10 +189,11 @@ final class AudioPlayer: ObservableObject {
     }
 
     /// The item we just swapped in never actually started; put back what was playing before.
-    private func itemFailed(_ item: AVPlayerItem, previous: Snapshot) {
+    private func itemFailed(_ item: AVPlayerItem, request: PlaybackRequest, previous: Snapshot) {
         let message = item.error?.localizedDescription ?? "Playback failed"
         if case .loading = state { restore(previous) }
         lastError = message
+        failedRequest = request
     }
 
     private func restore(_ snapshot: Snapshot) {
@@ -404,7 +409,10 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    func clearError() { lastError = nil }
+    func clearError() {
+        lastError = nil
+        failedRequest = nil
+    }
 
     private func syncState(_ status: AVPlayer.TimeControlStatus) {
         switch status {

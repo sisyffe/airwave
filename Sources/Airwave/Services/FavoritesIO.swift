@@ -42,17 +42,79 @@ enum FavoritesIO {
         }
     }
 
-    /// Appends incoming favorites whose names are free, in order. Incoming
-    /// favorites whose name is already taken are skipped. Returns the merged list
-    /// and the favorites that were added.
-    static func merge(_ incoming: [Favorite], into existing: [Favorite]) -> (items: [Favorite], added: [Favorite]) {
-        var merged = existing
-        var added: [Favorite] = []
-        for favorite in incoming where Favorite.isNameAvailable(favorite.name, among: merged) {
-            merged.append(favorite)
-            added.append(favorite)
+    enum ConflictStrategy {
+        case createDuplicates
+        case overwrite
+        case ignore
+    }
+
+    /// Imported favorites that share a name with existing ones. Computed before
+    /// anything is written, so the user can choose how to resolve it.
+    struct ImportPlan {
+        /// Incoming favorites in file order, with each conflict paired to the
+        /// existing favorite that has its name.
+        var entries: [Entry]
+
+        enum Entry {
+            case added(Favorite)
+            case conflict(existing: Favorite, incoming: Favorite)
         }
-        return (merged, added)
+
+        var conflicts: [(existing: Favorite, incoming: Favorite)] {
+            entries.compactMap { entry in
+                if case .conflict(let existing, let incoming) = entry { return (existing, incoming) }
+                return nil
+            }
+        }
+    }
+
+    static func plan(_ incoming: [Favorite], against existing: [Favorite]) -> ImportPlan {
+        ImportPlan(
+            entries: incoming.map { favorite in
+                if let match = existing.first(where: { Favorite.nameKey($0.name) == Favorite.nameKey(favorite.name) }) {
+                    return .conflict(existing: match, incoming: favorite)
+                }
+                return .added(favorite)
+            })
+    }
+
+    /// Returns the merged list after applying `strategy` to every conflict,
+    /// keeping file order. Overwrite and Ignore never touch non-conflicting favorites.
+    static func apply(_ plan: ImportPlan, to existing: [Favorite], strategy: ConflictStrategy) -> [Favorite] {
+        var merged = existing
+        for entry in plan.entries {
+            switch entry {
+            case .added(let favorite):
+                merged.append(favorite)
+            case .conflict(let existingFavorite, let incoming):
+                switch strategy {
+                case .ignore:
+                    continue
+                case .createDuplicates:
+                    var renamed = incoming
+                    renamed.name = uniqueName(for: incoming.name, among: merged)
+                    merged.append(renamed)
+                case .overwrite:
+                    guard let index = merged.firstIndex(where: { $0.id == existingFavorite.id }) else { continue }
+                    // A true overwrite: the imported favorite gets a new identity, so it
+                    // replaces the old one everywhere (player, recents) without inheriting its trim or artwork.
+                    merged[index] = Favorite(
+                        name: incoming.name, url: incoming.url, startOffset: incoming.startOffset, endOffset: incoming.endOffset)
+                }
+            }
+        }
+        return merged
+    }
+
+    /// "Name", then "Name (2)", "Name (3)", … whichever is first free.
+    static func uniqueName(for name: String, among favorites: [Favorite]) -> String {
+        var suffix = 2
+        var candidate = "\(name) (\(suffix))"
+        while !Favorite.isNameAvailable(candidate, among: favorites) {
+            suffix += 1
+            candidate = "\(name) (\(suffix))"
+        }
+        return candidate
     }
 
     private struct ExportedFavorite: Encodable {

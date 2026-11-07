@@ -46,7 +46,38 @@ enum StreamResolver {
         if directExtensions.contains(url.pathExtension.lowercased()) {
             return Resolved(streamURL: url, title: nil, isDirect: true)
         }
-        return try await resolveYouTube(url)
+        if isYouTubePage(url) {
+            return try await resolveYouTube(url)
+        }
+        // No recognised extension: keep it only if the server says it is audio or HLS.
+        let probed = try await probe(url)
+        return Resolved(streamURL: probed, title: nil, isDirect: true)
+    }
+
+    /// Follows redirects and reads just enough of the response to decide whether it is a stream.
+    /// Returns the final URL, which may differ from the input after redirects.
+    private static func probe(_ url: URL) async throws -> URL {
+        var request = URLRequest(url: url, timeoutInterval: pageRequestTimeout)
+        request.setValue(AppInfo.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+        do {
+            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            var sample: [UInt8] = []
+            sample.reserveCapacity(StreamProbe.sampleByteCount)
+            for try await byte in bytes {
+                sample.append(byte)
+                if sample.count >= StreamProbe.sampleByteCount { break }
+            }
+            let contentType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")
+            guard StreamProbe.isPlayable(contentType: contentType, sample: sample) else {
+                throw ResolveError.unsupported
+            }
+            return response.url ?? url
+        } catch let error as ResolveError {
+            throw error
+        } catch {
+            throw ResolveError.failed(error.localizedDescription)
+        }
     }
 
     // MARK: Thumbnails

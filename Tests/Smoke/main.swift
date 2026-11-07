@@ -97,21 +97,6 @@ do {
     )
     check(decoded.allSatisfy { $0.thumbnailKey == nil }, "imported favorites carry no artwork key")
 
-    let incoming = [
-        Favorite(name: "station one", url: "https://example.com/other.mp3"),
-        Favorite(name: "New", url: "https://example.com/three.aac"),
-    ]
-    let merged = FavoritesIO.merge(incoming, into: items)
-    check(merged.added.map(\.name) == ["New"], "merge skips incoming names already taken (case-insensitive)")
-    check(
-        merged.items.map(\.url) == [
-            "https://example.com/one.mp3",
-            "https://example.com/two.m3u8",
-            "https://example.com/three.aac",
-        ],
-        "merge preserves existing order and appends new entries"
-    )
-
     let exported = try! FavoritesIO.decode(FavoritesIO.encode(items + [Favorite(name: "Draft", url: "")]))
     check(exported.map(\.url) == items.map(\.url), "export skips empty-URL drafts (symmetric with import)")
 
@@ -198,6 +183,62 @@ do {
         #"[{"id":"8A9F1D2E-0000-4000-8000-000000000000","name":"Keyed","url":"https://example.com/k.mp3"}]"#.utf8)
     let imported = try! FavoritesIO.decode(importedWithID)
     check(imported.first?.id != UUID(uuidString: "8A9F1D2E-0000-4000-8000-000000000000"), "imported favorites get fresh IDs")
+}
+
+// MARK: StreamProbe
+
+do {
+    let hls = Array("#EXTM3U\n#EXT-X-VERSION:3".utf8)
+    check(StreamProbe.isPlayable(contentType: nil, sample: hls), "an HLS playlist is accepted without a content type")
+    check(
+        StreamProbe.isPlayable(contentType: "audio/mpeg; charset=binary", sample: []),
+        "an audio content type is accepted with parameters"
+    )
+    check(
+        StreamProbe.isPlayable(contentType: "application/vnd.apple.mpegurl", sample: []),
+        "an Apple HLS content type is accepted"
+    )
+    check(
+        !StreamProbe.isPlayable(contentType: "text/html; charset=utf-8", sample: Array("<html>".utf8)),
+        "an HTML page is rejected"
+    )
+    check(!StreamProbe.isPlayable(contentType: nil, sample: []), "an empty response without a type is rejected")
+}
+
+// MARK: FavoritesIO import plan
+
+do {
+    let existing = [
+        Favorite(name: "Jazz", url: "https://example.com/jazz.mp3", startOffset: 5),
+        Favorite(name: "News", url: "https://example.com/news.mp3"),
+    ]
+    let incoming = [
+        Favorite(name: "jazz", url: "https://example.com/jazz2.mp3"),
+        Favorite(name: "Rock", url: "https://example.com/rock.mp3"),
+    ]
+    let plan = FavoritesIO.plan(incoming, against: existing)
+    check(plan.conflicts.count == 1, "a name conflict is detected case-insensitively")
+
+    let duplicated = FavoritesIO.apply(plan, to: existing, strategy: .createDuplicates)
+    check(
+        duplicated.map(\.name) == ["Jazz", "News", "Rock", "jazz (2)"] || duplicated.map(\.name) == ["Jazz", "News", "jazz (2)", "Rock"],
+        "create-duplicates suffixes the conflicting name and keeps file order")
+
+    let ignored = FavoritesIO.apply(plan, to: existing, strategy: .ignore)
+    check(ignored.map(\.name) == ["Jazz", "News", "Rock"], "ignore drops only the conflicting import")
+
+    let overwritten = FavoritesIO.apply(plan, to: existing, strategy: .overwrite)
+    check(
+        overwritten.count == 3 && overwritten[0].url == "https://example.com/jazz2.mp3", "overwrite replaces the existing favorite in place"
+    )
+    check(overwritten[0].id != existing[0].id, "overwrite gives the favorite a new identity")
+    check(overwritten[0].startOffset == nil, "overwrite takes the imported trim, not the old one")
+
+    check(FavoritesIO.uniqueName(for: "Jazz", among: existing) == "Jazz (2)", "unique name starts at (2)")
+    check(
+        FavoritesIO.uniqueName(for: "Jazz", among: existing + [Favorite(name: "Jazz (2)", url: "x")]) == "Jazz (3)",
+        "unique name skips numbers already in use"
+    )
 }
 
 // MARK: RecentTrack

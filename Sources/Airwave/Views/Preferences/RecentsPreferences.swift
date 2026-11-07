@@ -5,10 +5,14 @@ struct RecentsPreferences: View {
     @EnvironmentObject var recents: RecentsStore
     @State private var confirmClear = false
 
-    private var maxCountBinding: Binding<Double> {
+    /// Slider position while dragging. The stored size changes only when the drag
+    /// ends, so history is not trimmed and re-saved on every tick.
+    @State private var draftMaxCount: Double?
+
+    private var sliderValue: Binding<Double> {
         Binding(
-            get: { Double(recents.maxCount) },
-            set: { recents.maxCount = Int($0.rounded()) })
+            get: { draftMaxCount ?? Double(recents.maxCount) },
+            set: { draftMaxCount = $0.rounded() })
     }
 
     var body: some View {
@@ -16,12 +20,17 @@ struct RecentsPreferences: View {
             LabeledContent("History size") {
                 HStack(spacing: 8) {
                     Slider(
-                        value: maxCountBinding,
+                        value: sliderValue,
                         in: Double(Prefs.minRecentMaxCount)...Double(Prefs.maxRecentMaxCount),
-                        step: 1
+                        step: 1,
+                        onEditingChanged: { editing in
+                            guard !editing, let draftMaxCount else { return }
+                            recents.maxCount = Int(draftMaxCount)
+                            self.draftMaxCount = nil
+                        }
                     )
                     .frame(width: 160)
-                    Text("\(recents.maxCount)")
+                    Text("\(Int(draftMaxCount ?? Double(recents.maxCount)))")
                         .monospacedDigit()
                         .frame(width: 22, alignment: .trailing)
                 }
