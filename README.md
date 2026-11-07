@@ -5,9 +5,9 @@
 ![Platform: macOS 13.0+](https://img.shields.io/badge/platform-macOS%2013.0%2B-blue.svg)
 ![Swift 5.9+](https://img.shields.io/badge/swift-5.9%2B-orange.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
-![Version: 1.1.3](https://img.shields.io/badge/version-1.1.3-informational.svg)
+![Version: 1.1.4](https://img.shields.io/badge/version-1.1.4-informational.svg)
 
-Airwave lets you listen to live internet radio, direct audio streams, and YouTube videos or live broadcasts without keeping a heavy web browser tab open. Designed exclusively for macOS Sonoma and later, it integrates seamlessly with system media controls, the Control Center Now Playing widget, and keyboard shortcuts.
+Airwave lets you listen to live internet radio, direct audio streams, and YouTube videos or live broadcasts without keeping a heavy web browser tab open. Designed for macOS 13 (Ventura) and later, it integrates seamlessly with system media controls, the Control Center Now Playing widget, and keyboard shortcuts.
 
 ![Airwave Screenshot](Resources/screenshot.png)
 
@@ -15,24 +15,29 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
 
 ## Features
 
-- **Hybrid Stream Playback:** Play direct audio stream URLs (`mp3`, `aac`, `m4a`, `m3u8`, etc.) and extract audio-only or HLS live streams from YouTube links automatically.
-- **Favorites Management:** Save your favorite stations and streams, rename them inline, remove them from the row's `…` menu, and reorder them by dragging (both in the main window and in Settings). Import and export your list as a lossless JSON file from Preferences.
-- **Custom Thumbnails:** In **Settings → Favorites**, give a favorite your own artwork by pasting an image, importing a file, or dragging one onto the thumbnail. The cover is applied everywhere the track appears — Favorites, Recents and the Now Playing card — and is never replaced by automatic artwork fetching. **Reset to default** clears it and re-fetches the automatic artwork.
-- **Recent History:** A Recents view — switched with Favorites from the bar at the bottom of the main window — remembers your recently played tracks for quick replay, numbered in order (the same numbering appears in the Dock menu's **Recent Tracks** submenu). The history size (1–20, default 5) and a "Clear history" action live in **Settings → Recents**.
-- **Volume Control:** In-app volume slider from 0% to 100% (default 75%), with snap stops every 25%.
+- **Hybrid Stream Playback:** Play direct audio stream URLs (`mp3`, `aac`, `m4a`, `m3u8`, etc.), HLS streams without a file extension, and audio-only or live streams from YouTube links automatically. Links without a recognised extension are accepted when the server answers with an audio or HLS stream.
+- **Favorites:** Save stations and streams under a unique name (case-insensitive). The same link can be saved several times with different names and trims. Remove them from the row's `…` menu, reorder them by dragging, and rename them in **Settings → Favorites**. Import and export your list as a JSON file from Preferences; identifiers are never exported, and a file with conflicting names asks how to resolve them (create duplicates, overwrite, or ignore).
+- **Custom Thumbnails:** In **Settings → Favorites**, give a favorite your own artwork by importing a clipboard image or an image file. The cover is applied everywhere the track appears and is never replaced by automatic fetching. The trash button clears it and fetches the automatic artwork again.
+- **Show in Settings:** A favorite's `…` menu opens **Settings → Favorites** with that favorite selected.
+- **Recent History:** A Recents view, switched with Favorites from the bar at the bottom of the main window, remembers recently played tracks for quick replay, numbered in order (the same numbering appears in the Dock menu's **Recent Tracks** submenu). The history size (1–20, default 5) and a "Clear history" action live in **Settings → Recents**.
+- **Volume Control:** In-app volume slider from 0% to 100% (default 75%), with snap stops every 25%. ⌘↑ and ⌘↓ change the volume by 10%.
 - **ICY "Now Playing" Metadata:** For direct radio streams (Icecast/Shoutcast), Airwave reads inline ICY metadata to show the station name and the current song — in the player card and in macOS Control Center.
-- **Smart Artwork & Metadata Caching:** Automatically fetches and downscales thumbnails from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons. Newly imported favorites use YouTube's video thumbnail when available and load thumbnails once in parallel; covers are also refreshed on every play and persisted alongside your saved favorites and recent tracks.
+- **Artwork:** Thumbnails come from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons. They are downscaled to 360 px and stored once per image in the caches folder, so tracks that share an image store it once. Artwork is refreshed on every play, and **Refresh Thumbnails** in **Settings → Favorites** re-fetches every favorite's artwork. Recents are refreshed when they are played.
+- **Thumbnail Display:** In **Settings → General → Appearance**, choose **Fill** (crop to a square) or **Fit** (the whole image over a blurred copy of itself). The choice applies everywhere artwork appears.
 - **Native macOS Integration:**
   - Full support for `MPNowPlayingInfoCenter` (Control Center & Lock Screen artwork and playback state) and `MPRemoteCommandCenter` (hardware media keys).
   - Live network status indicator (`Connected`, `Weak connection`, `No network`) with an immediate, color-coded hover label, plus a quick Preferences button embedded directly in the window titlebar.
   - A right-click Dock menu with **Play/Pause** and a **Recent Tracks** submenu for quick playback.
   - Optional **Launch at Login** via `SMAppService`.
-- **Playback Options Popover:** An arrow in the top-right of the player card opens a dropdown with the seek controls, greyed out for live streams that have no seekable timeline.
-- **Seek Controls:** For finite tracks, rewind or fast-forward 10 seconds (regular buttons) or 30 seconds (small buttons). **Settings → Playback** can add a second row of ±1.5 min and ±5 min buttons. Disabled for live streams, which have no seekable timeline.
+- **Playback Popover:** The arrow in the top-right of the player card opens a panel with the playing link (copyable, on one line) above the seek controls. The seek controls are greyed out for live streams that have no seekable timeline.
+- **Seek Controls:** For finite tracks, rewind or fast-forward 10 seconds (regular buttons) or 30 seconds (small buttons). **Settings → General → Appearance** adds a second row of ±1.5 min and ±5 min buttons. Disabled for live streams, which have no seekable timeline.
 - **Track Trimming:** In **Settings → Favorites**, set optional **Start offset** (from the start) and **End offset** (counted back from the end) in minutes and seconds for a favorite to trim its track on playback — applied from any entry point (Favorites, Recents, Dock, hotstart). Live streams ignore trim.
+- **Links Typed By Hand:** A link typed in the field plays as a favorite when it matches exactly one favorite without a trim, or the first untrimmed favorite when several share it. Otherwise it plays as a new track. **Settings → Playback** can turn this off so every typed link plays as a new track.
+- **Slow Loads:** A load that has not started playing within the chosen time (2–10 seconds, default 4) is restarted automatically, up to two times. **Settings → Playback** can turn this off.
+- **Failed Favorites:** If a favorite fails to load, a dialog offers **Retry**, **Edit Link** (opens its settings), **Delete**, or **Cancel**. The previous track keeps playing.
 - **End-of-Track Behavior:** Choose in **Settings → Playback** whether a finished track replays from the start (default) or stops. Applies to finite tracks only; live streams never end.
-- **Hotstart:** Optionally resume your last played stream automatically as soon as the app launches. Only a stream that was playing when Airwave closed is resumed — a stopped stream is not restarted.
-- **Background Playback Mode:** Choose whether closing the main window quits the application or keeps Airwave running silently in the background.
+- **Hotstart:** Optionally resume your last played stream automatically as soon as the app launches (**Settings → Playback**). Only a stream that was playing when Airwave closed is resumed — a stopped stream is not restarted.
+- **Background Playback Mode:** Choose in **Settings → General → App** whether closing the main window quits the application or keeps Airwave running silently in the background.
 
 ---
 
@@ -74,7 +79,7 @@ Pre-compiled versions of `Airwave.app` are signed using an **ad-hoc local signat
 ## Building from Source
 
 ### Requirements
-- **macOS 13.0 (Sonoma)** or later
+- **macOS 13.0 (Ventura)** or later
 - **Xcode 15.0+** or **Swift 5.9+** Command Line Tools
 
 ### Repository Layout Note
@@ -149,15 +154,22 @@ Sources/Airwave/
 │   ├── AudioPlayer.swift          # @MainActor AVPlayer wrapper, generation-safe async loading & MediaPlayer integration
 │   ├── StreamResolver.swift       # Direct stream vs. YouTubeKit extraction & OpenGraph/favicon artwork fetching
 │   ├── ICYMetadata.swift          # Icecast/Shoutcast inline metadata reader (station name & current song)
-│   ├── ThumbnailCache.swift       # Canonical, shared thumbnail downscaling for favorites & recents
+│   ├── ThumbnailCache.swift       # Content-addressed thumbnail store in the caches folder
 │   ├── ConnectionMonitor.swift    # NWPathMonitor wrapper publishing connection quality
 │   ├── PlaybackGeneration.swift   # Token gate that discards stale/superseded async playback work
 │   ├── Favorites.swift            # Codable Favorite model & UserDefaults-backed FavoritesStore
+│   ├── PlaybackRequest.swift      # Track identity, manual-link rule and the request every entry point plays
+│   ├── PlaybackActions.swift      # Copy, toggle-favorite and volume actions shared by menu and buttons
+│   ├── SettingsRouter.swift       # Selects the Settings tab and favorite (for Show in Settings)
 │   ├── FavoritesIO.swift          # Metadata-only JSON export, import & merge for favorites
 │   ├── Recents.swift              # UserDefaults-backed RecentsStore (configurable 1–20 history)
 │   └── Prefs.swift                # Centralized UserDefaults keys & defaults
 ├── Utilities/                     # Small, dependency-free helpers
 │   ├── AppInfo.swift              # App name & bundle version (read from Info.plist)
+│   ├── Alerts.swift               # Multi-button NSAlert helper
+│   ├── SettingsWindow.swift       # Opens Settings on macOS 13 and later
+│   ├── StreamProbe.swift          # Recognises audio and HLS responses without a file extension
+│   ├── TextEditing.swift          # Detects a focused text field for shortcut forwarding
 │   ├── NSImage+Downsizing.swift   # PNG downscaling used by thumbnails
 │   └── UserDefaultsJSON.swift     # Shared JSON-in-UserDefaults persistence
 ├── Views/
@@ -168,27 +180,29 @@ Sources/Airwave/
 │       ├── PlaybackPreferences.swift
 │       ├── RecentsPreferences.swift
 │       ├── FavoritesPreferences.swift
+│       ├── AppearanceSettings.swift  # Thumbnail display and seek-control rows
 │       └── FavoriteEditor.swift   # Detail pane for editing one favorite
 └── Components/                    # Reusable SwiftUI views
     ├── NowPlayingCard.swift       # Playback header with status pill, title/song, transport & volume slider
     ├── PlaybackOptionsPopover.swift  # Top-right dropdown with the seek controls
-    ├── FavoritesList.swift        # Interactive list with inline rename & native drag-to-reorder
+    ├── FavoritesList.swift        # Interactive list with native drag-to-reorder
     ├── RecentsList.swift          # Recently played tracks with quick replay
     ├── TitlebarButtons.swift      # Network indicator + settings gear shown in the title bar
     ├── TitlebarAccessoryInstaller.swift  # AppKit NSTitlebarAccessoryViewController bridge
     ├── AddFavoriteSheet.swift     # Modal sheet for naming a newly saved favorite stream
-    └── Thumbnail.swift            # Reusable rounded thumbnail view with fallback icon
+    └── Thumbnail.swift            # Reusable thumbnail view (Fill or Fit) with fallback icon
 ```
 
 ### Key Design Highlights
 - **Concurrency & Generation-Safe Playback (`AudioPlayer` + `PlaybackGeneration`):** Annotated with `@MainActor` and conforming to `ObservableObject`, `AudioPlayer` guards asynchronous work with a small `PlaybackGeneration` token gate. If a user rapidly switches streams while one is still resolving — or stops playback — stale async work is discarded without corrupting the active player state. If a stream fails to resolve, the player gracefully restores the previous stream and state.
 - **Stream Resolution Pipeline (`StreamResolver`):**
-  1. Validates `http`/`https` schemes and checks whether the URL extension matches known direct audio formats.
+  1. Validates `http`/`https` schemes and checks whether the URL extension matches known direct audio formats. Links without a known extension are probed: redirects are followed, and the response must be audio or start with an HLS `#EXTM3U` signature, otherwise the link is rejected.
   2. For YouTube URLs, queries `YouTubeKit` locally and selects the best stream in priority order: **HLS live stream** → **highest-bitrate M4A audio-only stream** → **lowest-resolution natively playable muxed stream**.
-  3. Fetches artwork asynchronously (up to 300 KB of HTML inspected for `og:image` / `twitter:image` meta tags, falling back to Google's S2 favicon service) and downscales images to 256 px PNG data for compact storage.
+  3. Fetches artwork asynchronously (up to 300 KB of HTML inspected for `og:image` / `twitter:image` meta tags, falling back to Google's S2 favicon service) and stores them through `ThumbnailCache` at 360 px.
 - **ICY Metadata Reader (`ICYMetadata`):** For direct radio streams, a second, audio-less connection parses inline `icy-metaint` blocks to surface the station name and current song without touching the playback pipeline; the task is generation-guarded and cancelled on stop or track change.
-- **Shared Thumbnails (`ThumbnailCache`):** Favorites and recents keep their own `thumbnail` field in local persistence, but exported favorites JSON contains only the favorite ID, name, and URL. Every image is downscaled through one shared cache, so both lists store identical bytes for the same link instead of each picking its own size.
-- **Lightweight Persistence (`FavoritesStore`, `RecentsStore`, `UserDefaultsJSON` & `Prefs`):** Favorites, recent history, and cached thumbnail `Data` are serialized as JSON in `UserDefaults` via a small shared helper, keeping the app completely self-contained with zero external database dependencies.
+- **Track Identity (`PlaybackRequest`):** Every track has a UUID: the playing track, each favorite and each recent entry. Favorites and recents share an ID when they are the same track, so the star and the now-playing marker update at once. UUIDs are internal and never exported.
+- **Content-Addressed Thumbnails (`ThumbnailCache`):** Each image is downscaled to 360 px and stored under the SHA-256 of its bytes in the caches folder. Favorites and recents keep only the key, so tracks that share an image store it once. Unreferenced files are removed at launch.
+- **Lightweight Persistence (`FavoritesStore`, `RecentsStore`, `UserDefaultsJSON` & `Prefs`):** Favorites and recent history are serialized as JSON in `UserDefaults` via a small shared helper, keeping the app self-contained with zero external database dependencies.
 
 ---
 
@@ -199,9 +213,14 @@ Sources/Airwave/
 | **Play / Pause** | `Space` (via Playback menu) or Media Play/Pause key |
 | **Stop Stream** | `⌘.` (`Cmd + Period`) |
 | **Refresh Stream** | `⌘R` (`Cmd + R`) |
+| **Toggle Favorite** | `⌘F` (adds or removes the playing track) |
+| **Copy Playing Link** | `⌘C` (when no text field is being edited) |
+| **Paste and Play Link** | `⌘V` (when no text field is being edited) |
+| **Volume Up / Down** | `⌘↑` / `⌘↓` in 10% steps (in a text field, they move the caret to the start or end) |
 | **Rewind / Forward 10 s** | `←` / `→` (finite tracks only) |
 | **Rewind / Forward 30 s** | `⇧←` / `⇧→` (finite tracks only) |
-| **Volume Control** | In-app volume slider, 0–100% with 25% snap stops (persisted across launches) |
+
+Copy, Paste, Cut and Select All keep their standard behaviour inside the link field and other text fields.
 
 ---
 

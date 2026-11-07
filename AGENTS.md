@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Guidance for agents working on **Airwave**, a lightweight native macOS audio
-player (SwiftUI, macOS 14+) that plays direct audio/HLS streams and resolves
+player (SwiftUI, macOS 13+) that plays direct audio/HLS streams and resolves
 YouTube audio via `YouTubeKit`.
 
 ## Toolchain and constraints
@@ -94,10 +94,16 @@ here. If you change behaviour that is not covered, note it in the PR/commit.
 - Playback async work is guarded by `PlaybackGeneration`. Any new `await` in the
   playback path must re-check `generation.isCurrent(token)` before touching
   state, and `stop()` must invalidate the generation.
-- Favorites and recents store thumbnails through `ThumbnailCache`, which owns
-  the canonical size. Never store raw/undownscaled image data.
-- `stop()` clears `Prefs.lastURL` so hotstart does not restart a stopped stream.
-  The resume URL is written in `AudioPlayer.start()`.
+- Favorites and recents hold only a `thumbnailKey` into `ThumbnailCache`, which
+  stores downscaled PNG files in the caches folder. Never persist image bytes in
+  the models or UserDefaults.
+- Every track has a UUID (`trackID`). Favorites and recents share it when they
+  are the same track, and the player publishes it so the UI can match them. The
+  UUID is internal: it is never exported, and import always assigns new ones.
+- `stop()` clears `Prefs.lastURL` and `Prefs.lastTrackID` so hotstart does not
+  restart a stopped stream. Both are written in `AudioPlayer.start()`.
+- Favorite names are unique case-insensitively after trimming. Several favorites
+  may share a link, each with its own trim.
 - When a finite item ends, `AudioPlayer` observes
   `AVPlayerItem.didPlayToEndTimeNotification` and either replays it or stops,
   per the `Prefs.replayOnTrackEnd` setting (default: replay). Live streams are
