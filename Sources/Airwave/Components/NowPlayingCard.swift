@@ -8,7 +8,8 @@ struct NowPlayingCard: View {
     @State private var isAdjustingVolume = false
     @State private var showOptions = false
 
-    private var isFavorite: Bool { favorites.contains(url: player.sourceURL) }
+    private var currentFavorite: Favorite? { favorites.favorite(id: player.trackID) }
+    private var isFavorite: Bool { currentFavorite != nil }
     private var volumePercentage: Int { Int((player.volume * 100).rounded()) }
 
     /// Square box shared by the favorite star and the options arrow so the two
@@ -126,13 +127,11 @@ struct NowPlayingCard: View {
             titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) {
-                if let favorite = favorites.favorite(for: player.sourceURL) {
-                    favorites.remove(favorite)
-                }
+                if let currentFavorite { favorites.remove(currentFavorite) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("“\(favorites.favorite(for: player.sourceURL)?.name ?? player.title)” will be removed from your favorites.")
+            Text("“\(currentFavorite?.name ?? player.title)” will be removed from your favorites.")
         }
     }
 

@@ -35,11 +35,7 @@ struct FavoriteEditor: View {
                 HStack {
                     Spacer()
                     Button {
-                        Task {
-                            await player.play(
-                                urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail,
-                                customArtwork: favorite.hasCustomThumbnail == true)
-                        }
+                        Task { await player.play(PlaybackRequest(favorite: favorite)) }
                     } label: {
                         Label("Play", systemImage: "play.fill")
                     }
@@ -178,13 +174,13 @@ struct FavoriteEditor: View {
             return
         }
         message = nil
-        recents.setCustomThumbnail(canonical, for: favorite.url)
+        recents.setCustomThumbnail(canonical, for: favorite.id)
         player.applyArtwork(canonical, for: favorite.url, custom: true)
     }
 
     private func resetThumbnail() {
         favorites.clearCustomThumbnail(for: favorite.id)
-        recents.clearCustomThumbnail(for: favorite.url)
+        recents.clearCustomThumbnail(for: favorite.id)
         player.applyArtwork(nil, for: favorite.url, custom: false)
         message = nil
         refetchThumbnail()

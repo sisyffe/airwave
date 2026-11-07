@@ -9,6 +9,7 @@ struct AirwaveApp: App {
     @StateObject private var recents = RecentsStore.shared
     @AppStorage(Prefs.hotstart) private var hotstart = true
     @AppStorage(Prefs.lastURL) private var lastURL = ""
+    @AppStorage(Prefs.lastTrackID) private var lastTrackID = ""
 
     init() {
         // Needed when launched via `swift run` (no bundle Info.plist).
@@ -72,12 +73,10 @@ struct AirwaveApp: App {
 
     private func runHotstart() {
         guard hotstart, !AudioPlayer.shared.hasStarted, !lastURL.isEmpty else { return }
-        let favorite = favorites.favorite(for: lastURL)
-        Task {
-            await AudioPlayer.shared.play(
-                urlString: lastURL, title: favorite?.name, artwork: favorite?.thumbnail,
-                customArtwork: favorite?.hasCustomThumbnail == true)
-        }
+        let trackID = UUID(uuidString: lastTrackID) ?? UUID()
+        let request = PlaybackRequest.known(
+            trackID: trackID, url: lastURL, favorites: FavoritesStore.shared.items, recents: RecentsStore.shared.items)
+        Task { await AudioPlayer.shared.play(request) }
     }
 }
 
@@ -111,7 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let item = NSMenuItem(
                     title: "\(index + 1). \(track.name)", action: #selector(dockPlayRecent(_:)), keyEquivalent: "")
                 item.target = self
-                item.representedObject = track.url
+                item.representedObject = track.id
                 item.toolTip = track.url
                 recentsMenu.addItem(item)
             }
@@ -133,11 +132,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func dockPlayRecent(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? String else { return }
-        let title = sender.title
+        guard let trackID = sender.representedObject as? UUID else { return }
         Task { @MainActor in
-            let isCustom = RecentsStore.shared.items.first { $0.url == url }?.hasCustomThumbnail == true
-            await AudioPlayer.shared.play(urlString: url, title: title, customArtwork: isCustom)
+            let recents = RecentsStore.shared.items
+            guard let track = recents.first(where: { $0.id == trackID }) else { return }
+            let request = PlaybackRequest.known(
+                trackID: track.id, url: track.url, favorites: FavoritesStore.shared.items, recents: recents)
+            await AudioPlayer.shared.play(request)
         }
     }
 

@@ -17,7 +17,7 @@ struct FavoritesList: View {
                 ForEach(favorites.items) { favorite in
                     FavoriteRow(
                         favorite: favorite,
-                        isCurrent: player.sourceURL == favorite.url && player.isPlaying,
+                        isCurrent: player.trackID == favorite.id && player.isPlaying,
                         isRenaming: renamingID == favorite.id,
                         renameText: $renameText,
                         onPlay: { play(favorite) },
@@ -25,6 +25,7 @@ struct FavoritesList: View {
                             renameText = favorite.name; renamingID = favorite.id
                         },
                         onRenameCommit: { newName in
+                            // A taken name is rejected and the old name is kept.
                             favorites.rename(favorite, to: newName)
                             renamingID = nil
                         },
@@ -40,11 +41,7 @@ struct FavoritesList: View {
     }
 
     private func play(_ favorite: Favorite) {
-        Task {
-            await player.play(
-                urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail,
-                customArtwork: favorite.hasCustomThumbnail == true)
-        }
+        Task { await player.play(PlaybackRequest(favorite: favorite)) }
     }
 }
 

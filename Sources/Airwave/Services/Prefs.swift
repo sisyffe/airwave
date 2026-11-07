@@ -3,6 +3,9 @@ import Foundation
 enum Prefs {
     static let hotstart = "hotstart"
     static let lastURL = "lastURL"
+    static let lastTrackID = "lastTrackID"
+    static let manualLinkBehavior = "manualLinkBehavior"
+    static let defaultManualLinkBehavior = ManualLinkBehavior.playMatchingFavorite
     static let volume = "volume"
     static let defaultVolume: Float = 0.75
     static let favorites = "favorites"
@@ -23,6 +26,11 @@ enum Prefs {
             return defaultQuitOnLastWindowClosed
         }
         return defaults.bool(forKey: quitOnLastWindowClosed)
+    }
+
+    static func manualLinkBehavior(using defaults: UserDefaults = .standard) -> ManualLinkBehavior {
+        defaults.string(forKey: manualLinkBehavior).flatMap(ManualLinkBehavior.init(rawValue:))
+            ?? defaultManualLinkBehavior
     }
 
     /// Whether a finished finite track should replay instead of stopping.

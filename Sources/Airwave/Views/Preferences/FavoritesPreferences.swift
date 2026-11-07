@@ -171,11 +171,12 @@ struct FavoritesPreferences: View {
         }
         do {
             let incoming = try FavoritesIO.decode(try Data(contentsOf: url))
-            let existingURLs = Set(favorites.items.map(\.url))
             let result = FavoritesIO.merge(incoming, into: favorites.items)
             favorites.items = result.items
-            loadThumbnails(for: result.items.filter { !existingURLs.contains($0.url) })
-            message = result.added > 0 ? "Imported \(result.added) favorite(s)." : "No new favorites to import."
+            loadThumbnails(for: result.added)
+            message =
+                result.added.isEmpty
+                ? "No new favorites to import." : "Imported \(result.added.count) favorite(s)."
         } catch {
             message = "Import failed: \(error.localizedDescription)"
         }
@@ -186,10 +187,9 @@ struct FavoritesPreferences: View {
 
         Task { @MainActor in
             await withTaskGroup(of: (String, Data?).self) { group in
-                for favorite in importedFavorites {
+                for url in Set(importedFavorites.map(\.url)) {
                     group.addTask {
-                        let thumbnail = await StreamResolver.thumbnail(for: favorite.url)
-                        return (favorite.url, thumbnail)
+                        (url, await StreamResolver.thumbnail(for: url))
                     }
                 }
 

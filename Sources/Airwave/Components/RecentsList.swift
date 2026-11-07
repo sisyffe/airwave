@@ -3,6 +3,7 @@ import SwiftUI
 struct RecentsList: View {
     @EnvironmentObject var player: AudioPlayer
     @EnvironmentObject var recents: RecentsStore
+    @EnvironmentObject var favorites: FavoritesStore
 
     var body: some View {
         if recents.items.isEmpty {
@@ -16,7 +17,7 @@ struct RecentsList: View {
                     RecentRow(
                         rank: index + 1,
                         track: track,
-                        isCurrent: player.sourceURL == track.url && player.isPlaying,
+                        isCurrent: player.trackID == track.id && player.isPlaying,
                         onPlay: { play(track) },
                         onRemove: { recents.remove(track) })
                 }
@@ -28,9 +29,7 @@ struct RecentsList: View {
 
     private func play(_ track: RecentTrack) {
         Task {
-            await player.play(
-                urlString: track.url, title: track.name, artwork: track.thumbnail,
-                customArtwork: track.hasCustomThumbnail == true)
+            await player.play(PlaybackRequest.known(trackID: track.id, url: track.url, favorites: favorites.items, recents: recents.items))
         }
     }
 }
