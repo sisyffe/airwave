@@ -92,6 +92,7 @@ struct ContentView: View {
         .onChange(of: player.sourceURL) { url in
             clearLinkIfPlayedElsewhere(url)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .airwavePasteLink)) { _ in paste() }
         .sheet(isPresented: $showAddFavorite) {
             AddFavoriteSheet(
                 trackID: player.trackID ?? UUID(), initialName: player.title, url: player.sourceURL,

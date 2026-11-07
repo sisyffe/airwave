@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 /// metadata-only JSON import/export.
 struct FavoritesPreferences: View {
     @EnvironmentObject var favorites: FavoritesStore
+    @ObservedObject private var router = SettingsRouter.shared
     @State private var selectedFavoriteID: Favorite.ID?
     @State private var message: String?
 
@@ -48,26 +49,35 @@ struct FavoritesPreferences: View {
 
                 Divider()
 
-                HStack(spacing: 4) {
-                    Button {
-                        add()
-                    } label: {
-                        Image(systemName: "plus")
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(spacing: 4) {
+                        Button {
+                            add()
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .help("Add a new favorite")
+                        Button {
+                            delete()
+                        } label: {
+                            Image(systemName: "minus")
+                        }
+                        .disabled(selectedFavoriteID == nil)
+                        .help("Delete the selected favorite")
                     }
-                    .help("Add a new favorite")
-                    Button {
-                        delete()
-                    } label: {
-                        Image(systemName: "minus")
-                    }
-                    .disabled(selectedFavoriteID == nil)
-                    .help("Delete the selected favorite")
                     Spacer()
-                    Button("Import…") { importFavorites() }
-                        .help("Merge favorites from a JSON file")
-                    Button("Export…") { exportFavorites() }
+                    Button("Refresh Thumbnails") { refreshAllThumbnails() }
                         .disabled(favorites.items.isEmpty)
-                        .help("Save your favorites to a JSON file")
+                        .help("Fetch the latest artwork for every favorite. Custom thumbnails are kept.")
+                    Spacer()
+                    VStack(spacing: 4) {
+                        Button("Import…") { importFavorites() }
+                            .help("Merge favorites from a JSON file")
+                        Button("Export…") { exportFavorites() }
+                            .disabled(favorites.items.isEmpty)
+                            .help("Save your favorites to a JSON file")
+                    }
+                    .frame(width: 96)
                 }
                 .controlSize(.small)
                 .padding(6)
@@ -87,6 +97,8 @@ struct FavoritesPreferences: View {
             }
             .frame(minWidth: 240)
         }
+        .onAppear { applyRouterSelection() }
+        .onChange(of: router.selectedFavoriteID) { _ in applyRouterSelection() }
         .onDrop(of: [UTType.fileURL], isTargeted: nil, perform: importDroppedFile)
         .alert("Favorites", isPresented: messageShown) {
             Button("OK") { message = nil }
@@ -97,6 +109,13 @@ struct FavoritesPreferences: View {
 
     private var messageShown: Binding<Bool> {
         Binding(get: { message != nil }, set: { if !$0 { message = nil } })
+    }
+
+    /// Selects the favorite the router asked for ("Show in Settings"), then clears the request.
+    private func applyRouterSelection() {
+        guard let id = router.selectedFavoriteID else { return }
+        selectedFavoriteID = id
+        router.selectedFavoriteID = nil
     }
 
     private func add() {
@@ -183,7 +202,7 @@ struct FavoritesPreferences: View {
             let before = Set(favorites.items.map(\.id))
             favorites.items = FavoritesIO.apply(plan, to: favorites.items, strategy: strategy)
             let added = favorites.items.filter { !before.contains($0.id) }
-            loadThumbnails(for: added)
+            refreshThumbnails(for: added)
             message =
                 added.isEmpty
                 ? "No new favorites to import." : "Imported \(added.count) favorite(s)."
@@ -208,12 +227,19 @@ struct FavoritesPreferences: View {
         }
     }
 
-    private func loadThumbnails(for importedFavorites: [Favorite]) {
-        guard !importedFavorites.isEmpty else { return }
+    private func refreshAllThumbnails() {
+        refreshThumbnails(for: favorites.items)
+    }
+
+    /// Fetches artwork for each distinct URL in `targets` (in parallel) and stores it on
+    /// the favorites that use it. Favorites with a custom thumbnail are skipped by the store.
+    private func refreshThumbnails(for targets: [Favorite]) {
+        let urls = Set(targets.map(\.url))
+        guard !urls.isEmpty else { return }
 
         Task { @MainActor in
             await withTaskGroup(of: (String, Data?).self) { group in
-                for url in Set(importedFavorites.map(\.url)) {
+                for url in urls {
                     group.addTask {
                         (url, await StreamResolver.thumbnail(for: url))
                     }

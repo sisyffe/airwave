@@ -241,6 +241,21 @@ do {
     )
 }
 
+// MARK: Auto-refresh threshold
+
+do {
+    let suite = "airwave.smoke.autorefresh"
+    let defaults = UserDefaults(suiteName: suite)!
+    defaults.removePersistentDomain(forName: suite)
+
+    check(Prefs.autoRefreshThreshold(using: defaults) == 4, "slow-load threshold defaults to 4 seconds")
+    defaults.set(0.0, forKey: Prefs.autoRefreshSeconds)
+    check(Prefs.autoRefreshThreshold(using: defaults) == nil, "a zero threshold means never")
+    defaults.set(10.0, forKey: Prefs.autoRefreshSeconds)
+    check(Prefs.autoRefreshThreshold(using: defaults) == 10, "an explicit threshold is respected")
+    check(Prefs.autoRefreshStops.last == 0 && Prefs.autoRefreshStops.count == 7, "the stops are 2–10 s and never")
+}
+
 // MARK: RecentTrack
 
 do {

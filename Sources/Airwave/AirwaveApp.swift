@@ -41,7 +41,50 @@ struct AirwaveApp: App {
             CommandGroup(replacing: .appInfo) {
                 Button("About Airwave") { appDelegate.showAbout() }
             }
+            // ⌘C and ⌘V act on the playing link, unless a text field is being edited.
+            CommandGroup(replacing: .pasteboard) {
+                Button("Cut") { TextEditing.send(#selector(NSText.cut(_:))) }
+                    .keyboardShortcut("x", modifiers: .command)
+                Button("Copy") {
+                    if TextEditing.isEditingText {
+                        TextEditing.send(#selector(NSText.copy(_:)))
+                    } else {
+                        PlaybackActions.copyPlayingLink()
+                    }
+                }
+                .keyboardShortcut("c", modifiers: .command)
+                Button("Paste") {
+                    if TextEditing.isEditingText {
+                        TextEditing.send(#selector(NSText.paste(_:)))
+                    } else {
+                        NotificationCenter.default.post(name: .airwavePasteLink, object: nil)
+                    }
+                }
+                .keyboardShortcut("v", modifiers: .command)
+                Button("Select All") { TextEditing.send(#selector(NSText.selectAll(_:))) }
+                    .keyboardShortcut("a", modifiers: .command)
+            }
             CommandMenu("Playback") {
+                Button("Toggle Favorite") { PlaybackActions.toggleFavorite() }
+                    .keyboardShortcut("f", modifiers: .command)
+                    .disabled(AudioPlayer.shared.sourceURL.isEmpty)
+                // ⌘↑ / ⌘↓ move the caret to the start/end of a text field, and otherwise change volume.
+                Button("Volume Up") {
+                    if TextEditing.isEditingText {
+                        TextEditing.send(#selector(NSResponder.moveToBeginningOfDocument(_:)))
+                    } else {
+                        PlaybackActions.changeVolume(by: PlaybackActions.volumeStep)
+                    }
+                }
+                .keyboardShortcut(.upArrow, modifiers: .command)
+                Button("Volume Down") {
+                    if TextEditing.isEditingText {
+                        TextEditing.send(#selector(NSResponder.moveToEndOfDocument(_:)))
+                    } else {
+                        PlaybackActions.changeVolume(by: -PlaybackActions.volumeStep)
+                    }
+                }
+                .keyboardShortcut(.downArrow, modifiers: .command)
                 Button(player.isPlaying ? "Pause" : "Play") { player.toggle() }
                     .keyboardShortcut(.space, modifiers: [])
                 Button("Stop") { player.stop() }

@@ -121,6 +121,10 @@ struct NowPlayingCard: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
         .overlay(alignment: .topLeading) { favoriteButton.padding(6) }
         .overlay(alignment: .topTrailing) { optionsButton.padding(6) }
+        .onReceive(NotificationCenter.default.publisher(for: .airwaveToggleFavorite)) { _ in
+            guard !player.sourceURL.isEmpty else { return }
+            if isFavorite { showRemoveConfirm = true } else { showAddFavorite = true }
+        }
         .confirmationDialog(
             "Remove from favorites?",
             isPresented: $showRemoveConfirm,

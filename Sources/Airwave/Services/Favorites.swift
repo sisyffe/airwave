@@ -106,18 +106,6 @@ final class FavoritesStore: ObservableObject {
 
     func remove(_ favorite: Favorite) { items.removeAll { $0.id == favorite.id } }
 
-    /// Renames a favorite. Returns false (and leaves the name unchanged) when the
-    /// new name is already used by another favorite. An empty name falls back to the link.
-    @discardableResult
-    func rename(_ favorite: Favorite, to name: String) -> Bool {
-        guard let index = items.firstIndex(where: { $0.id == favorite.id }) else { return false }
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalName = trimmed.isEmpty ? items[index].url : trimmed
-        guard isNameAvailable(finalName, excluding: favorite.id) else { return false }
-        items[index].name = finalName
-        return true
-    }
-
     private func save() {
         UserDefaultsJSON.save(items, to: key)
     }

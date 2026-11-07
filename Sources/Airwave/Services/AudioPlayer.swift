@@ -49,6 +49,8 @@ final class AudioPlayer: ObservableObject {
     private var trimEndObserver: Any?
     /// Fires when the current finite item reaches its end, to replay or stop it.
     private var endOfTrackObserver: NSObjectProtocol?
+    /// Watches a slow load and restarts it; see `scheduleSlowLoadRetry`.
+    private var slowLoadTask: Task<Void, Never>?
     /// ICY metadata reader task for the current direct stream, if any.
     private var icyTask: Task<Void, Never>?
     /// Guards async playback work; stale work is dropped if the token is no
@@ -84,11 +86,16 @@ final class AudioPlayer: ObservableObject {
         let trimEndOffset: TimeInterval?
     }
 
-    func play(_ request: PlaybackRequest) async {
+    /// Automatic retries after a slow load, before giving up on the load.
+    static let maxSlowLoadRetries = 2
+
+    func play(_ request: PlaybackRequest, retry: Int = 0) async {
         hasStarted = true
         lastError = nil
         failedRequest = nil
         let playGeneration = generation.begin()
+        slowLoadTask?.cancel()
+        slowLoadTask = nil
         let previous = Snapshot(
             trackID: trackID, url: sourceURL, title: self.title, artworkKey: artworkKey, artworkIsCustom: artworkIsCustom,
             item: player.currentItem, wasPlaying: isPlaying, trimStartOffset: trimStartOffset,
@@ -99,6 +106,7 @@ final class AudioPlayer: ObservableObject {
         trimApplied = false
         removeTrimEndObserver()
         beginLoading(request)
+        scheduleSlowLoadRetry(request, retry: retry, playGeneration: playGeneration)
         do {
             let resolved = try await StreamResolver.resolve(request.url)
             guard generation.isCurrent(playGeneration) else { return }  // user switched or stopped
@@ -110,6 +118,18 @@ final class AudioPlayer: ObservableObject {
             restore(previous)  // keep whatever was playing…
             lastError = error.localizedDescription  // …and surface the problem as an alert
             failedRequest = request
+        }
+    }
+
+    /// Retries a load that has not started playing within the user's threshold, up to
+    /// `maxSlowLoadRetries` times. A newer play or a stop invalidates the watchdog.
+    private func scheduleSlowLoadRetry(_ request: PlaybackRequest, retry: Int, playGeneration: Int) {
+        guard let threshold = Prefs.autoRefreshThreshold(), retry < Self.maxSlowLoadRetries else { return }
+        slowLoadTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(threshold * 1_000_000_000))
+            guard !Task.isCancelled, let self, self.generation.isCurrent(playGeneration), self.state == .loading
+            else { return }
+            await self.play(request, retry: retry + 1)
         }
     }
 
@@ -364,6 +384,8 @@ final class AudioPlayer: ObservableObject {
         // Invalidate in-flight work so a stream still resolving (or artwork still
         // downloading) cannot start playback or paint artwork after the stop.
         generation.invalidate()
+        slowLoadTask?.cancel()
+        slowLoadTask = nil
         removeEndOfTrackObserver()
         removeDurationObserver()
         removeTrimEndObserver()
@@ -416,7 +438,10 @@ final class AudioPlayer: ObservableObject {
 
     private func syncState(_ status: AVPlayer.TimeControlStatus) {
         switch status {
-        case .playing: state = .playing
+        case .playing:
+            state = .playing
+            slowLoadTask?.cancel()
+            slowLoadTask = nil
         case .waitingToPlayAtSpecifiedRate: state = .loading
         case .paused: if player.currentItem != nil && state != .loading { state = .paused }
         @unknown default: break
