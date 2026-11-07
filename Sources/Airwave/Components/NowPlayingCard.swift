@@ -41,7 +41,7 @@ struct NowPlayingCard: View {
     var body: some View {
         VStack(spacing: 6) {
             statusLine.font(.caption2)
-            Thumbnail(data: player.artwork, size: 120)
+            Thumbnail(key: player.artworkKey, size: 120)
             Text(player.title.isEmpty ? "Nothing playing" : player.title)
                 .font(.callout.weight(.semibold))
                 .lineLimit(2).multilineTextAlignment(.center)

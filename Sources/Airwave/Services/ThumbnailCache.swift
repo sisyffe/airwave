@@ -1,57 +1,73 @@
 import AppKit
+import CryptoKit
 
-/// Canonical source of thumbnail images shared by the favorites and recents
-/// stores.
+/// Content-addressed store for thumbnail images.
 ///
-/// Both stores hold a `thumbnail` field so the persisted JSON stays unchanged,
-/// but every thumbnail is downscaled through this type first. That keeps the
-/// bytes for a given link identical everywhere instead of each store picking
-/// its own size.
+/// Images are downscaled once, written to the caches directory under the SHA-256
+/// of their bytes, and referred to elsewhere by that key. Favorites, recents and
+/// the player only hold keys, so one image shared by several tracks is stored
+/// once, and the persisted JSON stays small.
 @MainActor
 enum ThumbnailCache {
-    /// Longest side of a stored thumbnail, in points.
-    nonisolated static let maxSide: CGFloat = 256
+    /// Longest side of a stored thumbnail, in points. 360 px is 3x the 120 pt
+    /// Now Playing artwork, so it stays sharp on Retina displays.
+    nonisolated static let maxSide: CGFloat = 360
 
-    private struct Entry {
-        let source: Data
-        let thumbnail: Data
-    }
+    /// Keeps decoded images for the lists so scrolling does not re-read files.
+    private static let images = NSCache<NSString, NSImage>()
 
-    private static var entries: [String: Entry] = [:]
+    private static let directory: URL = {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let bundleID = Bundle.main.bundleIdentifier ?? "Airwave"
+        return base.appendingPathComponent(bundleID, isDirectory: true)
+            .appendingPathComponent("Thumbnails", isDirectory: true)
+    }()
 
-    /// Returns the canonical thumbnail for `url`, downscaling `data` when needed.
-    ///
-    /// Recomputes when `data` differs from the last source seen for `url`, so a
-    /// refreshed cover is never masked by a stale cache entry. Returns nil when
-    /// `data` is not a decodable image.
-    static func canonical(_ data: Data, for url: String) -> Data? {
-        if let entry = entries[url], entry.source == data { return entry.thumbnail }
-        guard let image = NSImage(data: data), let downscaled = image.downsized(maxSide: maxSide) else {
+    /// Downscales `data` and stores it, returning its key. Nil when `data` is not an image.
+    static func store(_ data: Data) -> String? {
+        let key = key(for: data)
+        let file = url(for: key)
+        if FileManager.default.fileExists(atPath: file.path) { return key }
+        guard let image = NSImage(data: data), let png = image.downsized(maxSide: maxSide) else { return nil }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try png.write(to: file, options: .atomic)
+        } catch {
             return nil
         }
-        entries[url] = Entry(source: data, thumbnail: downscaled)
-        return downscaled
+        return key
     }
 
-    /// Nil-safe overload used when loading persisted items.
-    static func canonical(_ data: Data?, for url: String) -> Data? {
-        guard let data else { return nil }
-        return canonical(data, for: url)
+    /// Stored bytes for `key`, or nil when the file is missing (for example after the system purged the cache).
+    static func data(for key: String?) -> Data? {
+        guard let key else { return nil }
+        return try? Data(contentsOf: url(for: key))
     }
 
-    /// Rewrites every item's thumbnail to its canonical form on load, so data
-    /// stored by older versions is normalized. Note: downscaling never enlarges,
-    /// so a legacy undersized thumbnail keeps its size until the next play
-    /// fetches a fresh cover.
-    static func canonicalizing<Item>(
-        _ items: [Item],
-        url: KeyPath<Item, String>,
-        thumbnail: WritableKeyPath<Item, Data?>
-    ) -> [Item] {
-        items.map { item in
-            var item = item
-            item[keyPath: thumbnail] = canonical(item[keyPath: thumbnail], for: item[keyPath: url])
-            return item
+    /// Decoded image for `key`, cached in memory.
+    static func image(for key: String?) -> NSImage? {
+        guard let key else { return nil }
+        if let cached = images.object(forKey: key as NSString) { return cached }
+        guard let data = data(for: key), let image = NSImage(data: data) else { return nil }
+        images.setObject(image, forKey: key as NSString)
+        return image
+    }
+
+    /// Removes every file whose key is not in `keeping`. Run after loading so
+    /// thumbnails no longer referenced by any favorite or recent are reclaimed.
+    static func prune(keeping keys: Set<String>) {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        else { return }
+        for file in files where !keys.contains(file.deletingPathExtension().lastPathComponent) {
+            try? FileManager.default.removeItem(at: file)
         }
+    }
+
+    private static func key(for data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func url(for key: String) -> URL {
+        directory.appendingPathComponent(key).appendingPathExtension("png")
     }
 }

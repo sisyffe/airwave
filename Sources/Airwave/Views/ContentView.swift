@@ -92,7 +92,7 @@ struct ContentView: View {
         .sheet(isPresented: $showAddFavorite) {
             AddFavoriteSheet(
                 trackID: player.trackID ?? UUID(), initialName: player.title, url: player.sourceURL,
-                thumbnail: player.artwork)
+                thumbnailKey: player.artworkKey)
         }
         .alert("Playback failed", isPresented: errorShown) {
             Button("OK") { player.clearError() }

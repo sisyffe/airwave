@@ -24,12 +24,15 @@ struct AirwaveApp: App {
                 .environmentObject(recents)
                 .frame(minWidth: 240, idealWidth: 260, minHeight: 380, idealHeight: 460)
                 .onReceive(NotificationCenter.default.publisher(for: .airwaveArtwork)) { notification in
-                    if let url = notification.object as? String, let data = notification.userInfo?["data"] as? Data {
-                        favorites.setThumbnail(data, for: url)
-                        recents.setThumbnail(data, for: url)
+                    if let url = notification.object as? String, let key = notification.userInfo?["key"] as? String {
+                        favorites.setThumbnailKey(key, for: url)
+                        recents.setThumbnailKey(key, for: url)
                     }
                 }
-                .task { runHotstart() }
+                .task {
+                    ThumbnailCache.prune(keeping: favorites.thumbnailKeys.union(recents.thumbnailKeys))
+                    runHotstart()
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 260, height: 460)

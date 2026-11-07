@@ -3,7 +3,7 @@ import AppKit
 
 /// Rounded thumbnail with a music-note fallback when there is no image data.
 struct Thumbnail: View {
-    let data: Data?
+    let key: String?
     var size: CGFloat
 
     /// Fallback icon size and corner radius, as fractions of `size`.
@@ -12,7 +12,7 @@ struct Thumbnail: View {
 
     var body: some View {
         Group {
-            if let data, let image = NSImage(data: data) {
+            if let image = ThumbnailCache.image(for: key) {
                 Image(nsImage: image).resizable().scaledToFill()
             } else {
                 Image(systemName: "music.note")

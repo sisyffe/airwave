@@ -16,8 +16,8 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var sourceURL: String = ""
     /// Identity of the playing track (shared with its favorite or recent entry).
     @Published private(set) var trackID: UUID?
-    /// Thumbnail of the current link (PNG/JPEG data), if one could be fetched.
-    @Published private(set) var artwork: Data?
+    /// Key of the current track's thumbnail in `ThumbnailCache`, if one is known.
+    @Published private(set) var artworkKey: String?
     /// Current song reported by ICY metadata for direct radio streams (nil = none).
     @Published private(set) var streamTitle: String?
     /// Last playback error, shown as an alert by the UI (nil = none).
@@ -74,7 +74,7 @@ final class AudioPlayer: ObservableObject {
         let trackID: UUID?
         let url: String
         let title: String
-        let artwork: Data?
+        let artworkKey: String?
         let artworkIsCustom: Bool
         let item: AVPlayerItem?
         let wasPlaying: Bool
@@ -87,7 +87,7 @@ final class AudioPlayer: ObservableObject {
         lastError = nil
         let playGeneration = generation.begin()
         let previous = Snapshot(
-            trackID: trackID, url: sourceURL, title: self.title, artwork: artwork, artworkIsCustom: artworkIsCustom,
+            trackID: trackID, url: sourceURL, title: self.title, artworkKey: artworkKey, artworkIsCustom: artworkIsCustom,
             item: player.currentItem, wasPlaying: isPlaying, trimStartOffset: trimStartOffset,
             trimEndOffset: trimEndOffset)
         artworkIsCustom = request.customArtwork
@@ -121,7 +121,7 @@ final class AudioPlayer: ObservableObject {
         trackID = request.trackID
         sourceURL = request.url
         title = request.name ?? request.url
-        artwork = request.artwork
+        artworkKey = request.artworkKey
         updateNowPlaying()
     }
 
@@ -141,7 +141,8 @@ final class AudioPlayer: ObservableObject {
         UserDefaults.standard.set(request.url, forKey: Prefs.lastURL)
         UserDefaults.standard.set(request.trackID.uuidString, forKey: Prefs.lastTrackID)
         RecentsStore.shared.record(
-            trackID: request.trackID, name: self.title, url: request.url, thumbnail: artwork, custom: artworkIsCustom)
+            trackID: request.trackID, name: self.title, url: request.url, thumbnailKey: artworkKey,
+            custom: artworkIsCustom)
         updateNowPlaying()
         startICYIfEligible(resolved, playGeneration: playGeneration)
     }
@@ -165,19 +166,20 @@ final class AudioPlayer: ObservableObject {
     /// favorites/recents), so covers stay up to date on every play.
     private func refreshArtwork(_ resolved: StreamResolver.Resolved, page: String, playGeneration: Int) async {
         guard !artworkIsCustom else { return }  // keep the user's cover
-        let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: page)
-        if generation.isCurrent(playGeneration), let fetched, fetched != artwork {
-            artwork = fetched
-            updateNowPlaying()
-            NotificationCenter.default.post(name: .airwaveArtwork, object: page, userInfo: ["data": fetched])
-        }
+        guard let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: page),
+            generation.isCurrent(playGeneration)
+        else { return }
+        guard let key = ThumbnailCache.store(fetched), key != artworkKey else { return }
+        artworkKey = key
+        updateNowPlaying()
+        NotificationCenter.default.post(name: .airwaveArtwork, object: page, userInfo: ["key": key])
     }
 
     /// Replaces the artwork of the currently playing track (used when a custom
     /// thumbnail is set or reset from Settings). No-op for other URLs.
-    func applyArtwork(_ data: Data?, for url: String, custom: Bool) {
+    func applyArtwork(key: String?, for url: String, custom: Bool) {
         guard url == sourceURL else { return }
-        artwork = data
+        artworkKey = key
         artworkIsCustom = custom
         updateNowPlaying()
     }
@@ -214,7 +216,7 @@ final class AudioPlayer: ObservableObject {
         }
         if snapshot.wasPlaying, snapshot.item != nil { player.play() }
         title = snapshot.title
-        artwork = snapshot.artwork
+        artworkKey = snapshot.artworkKey
         artworkIsCustom = snapshot.artworkIsCustom
         isLive = snapshot.item?.duration.isIndefinite ?? true
         state = snapshot.item == nil ? .idle : (snapshot.wasPlaying ? .playing : .paused)
@@ -348,7 +350,7 @@ final class AudioPlayer: ObservableObject {
     func refresh() {
         guard let trackID, !sourceURL.isEmpty else { return }
         let request = PlaybackRequest(
-            trackID: trackID, url: sourceURL, name: title, artwork: artwork, customArtwork: artworkIsCustom,
+            trackID: trackID, url: sourceURL, name: title, artworkKey: artworkKey, customArtwork: artworkIsCustom,
             startOffset: trimStartOffset, endOffset: trimEndOffset)
         Task { await play(request) }
     }
@@ -373,7 +375,7 @@ final class AudioPlayer: ObservableObject {
         trackID = nil
         sourceURL = ""
         title = ""
-        artwork = nil
+        artworkKey = nil
         state = .idle
         // Forget the resume URL so hotstart does not restart a stopped stream.
         UserDefaults.standard.removeObject(forKey: Prefs.lastURL)
@@ -393,7 +395,7 @@ final class AudioPlayer: ObservableObject {
                 if let station = info.station, self.title == self.sourceURL, let trackID = self.trackID {
                     self.title = station
                     RecentsStore.shared.record(
-                        trackID: trackID, name: station, url: self.sourceURL, thumbnail: self.artwork,
+                        trackID: trackID, name: station, url: self.sourceURL, thumbnailKey: self.artworkKey,
                         custom: self.artworkIsCustom)
                 }
                 self.streamTitle = info.song
@@ -444,7 +446,7 @@ final class AudioPlayer: ObservableObject {
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
             MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
         ]
-        if let artwork, let image = NSImage(data: artwork) {
+        if let image = ThumbnailCache.image(for: artworkKey) {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         } else if let icon = NSApp?.applicationIconImage {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: icon.size) { _ in icon }
@@ -455,6 +457,6 @@ final class AudioPlayer: ObservableObject {
 }
 
 extension Notification.Name {
-    /// Posted when a thumbnail is fetched for a URL (object: url String, userInfo["data"]: Data).
+    /// Posted when a thumbnail is fetched for a URL (object: url String, userInfo["key"]: ThumbnailCache key).
     static let airwaveArtwork = Notification.Name("airwaveArtwork")
 }

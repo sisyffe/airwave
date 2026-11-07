@@ -30,7 +30,7 @@ struct FavoritesPreferences: View {
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                                 .help("Drag to reorder")
-                            Thumbnail(data: favorite.thumbnail, size: 20)
+                            Thumbnail(key: favorite.thumbnailKey, size: 20)
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(favorite.name).lineLimit(1)
                                 if let host = URL(string: favorite.url)?.host {
@@ -194,8 +194,8 @@ struct FavoritesPreferences: View {
                 }
 
                 for await (url, thumbnail) in group {
-                    if let thumbnail {
-                        favorites.setThumbnail(thumbnail, for: url)
+                    if let thumbnail, let key = ThumbnailCache.store(thumbnail) {
+                        favorites.setThumbnailKey(key, for: url)
                     }
                 }
             }

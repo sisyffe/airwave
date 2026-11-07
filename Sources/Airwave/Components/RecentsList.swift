@@ -48,7 +48,7 @@ private struct RecentRow: View {
                 .foregroundStyle(.tertiary)
                 .monospacedDigit()
                 .frame(width: 12)
-            Thumbnail(data: track.thumbnail, size: 24)
+            Thumbnail(key: track.thumbnailKey, size: 24)
             // Align the row separator with the track name (as in the favorites
             // list) instead of the leading rank number.
             Text(track.name)

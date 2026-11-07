@@ -25,19 +25,19 @@ struct PlaybackRequest: Equatable {
     var trackID: UUID
     var url: String
     var name: String?
-    var artwork: Data?
+    var artworkKey: String?
     var customArtwork: Bool
     var startOffset: TimeInterval?
     var endOffset: TimeInterval?
 
     init(
-        trackID: UUID = UUID(), url: String, name: String? = nil, artwork: Data? = nil,
+        trackID: UUID = UUID(), url: String, name: String? = nil, artworkKey: String? = nil,
         customArtwork: Bool = false, startOffset: TimeInterval? = nil, endOffset: TimeInterval? = nil
     ) {
         self.trackID = trackID
         self.url = url
         self.name = name
-        self.artwork = artwork
+        self.artworkKey = artworkKey
         self.customArtwork = customArtwork
         self.startOffset = startOffset
         self.endOffset = endOffset
@@ -45,7 +45,7 @@ struct PlaybackRequest: Equatable {
 
     init(favorite: Favorite) {
         self.init(
-            trackID: favorite.id, url: favorite.url, name: favorite.name, artwork: favorite.thumbnail,
+            trackID: favorite.id, url: favorite.url, name: favorite.name, artworkKey: favorite.thumbnailKey,
             customArtwork: favorite.hasCustomThumbnail == true, startOffset: favorite.startOffset,
             endOffset: favorite.endOffset)
     }
@@ -58,7 +58,7 @@ struct PlaybackRequest: Equatable {
         }
         let recent = recents.first { $0.id == trackID }
         return PlaybackRequest(
-            trackID: trackID, url: url, name: recent?.name, artwork: recent?.thumbnail,
+            trackID: trackID, url: url, name: recent?.name, artworkKey: recent?.thumbnailKey,
             customArtwork: recent?.hasCustomThumbnail == true)
     }
 

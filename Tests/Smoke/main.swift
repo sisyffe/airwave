@@ -74,8 +74,8 @@ do {
 
 do {
     let items = [
-        Favorite(name: "Station One", url: "https://example.com/one.mp3", thumbnail: Data([1, 2, 3])),
-        Favorite(name: "Station Two", url: "https://example.com/two.m3u8", thumbnail: nil),
+        Favorite(name: "Station One", url: "https://example.com/one.mp3", thumbnailKey: "abc"),
+        Favorite(name: "Station Two", url: "https://example.com/two.m3u8", thumbnailKey: nil),
     ]
 
     let encoded = try! FavoritesIO.encode(items)
@@ -95,7 +95,7 @@ do {
         metadataRoundTrips,
         "export/import preserves favorite metadata and assigns fresh identifiers"
     )
-    check(decoded.allSatisfy { $0.thumbnail == nil }, "imported favorites have no exported thumbnail")
+    check(decoded.allSatisfy { $0.thumbnailKey == nil }, "imported favorites carry no artwork key")
 
     let incoming = [
         Favorite(name: "station one", url: "https://example.com/other.mp3"),

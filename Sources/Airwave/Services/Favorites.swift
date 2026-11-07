@@ -6,7 +6,8 @@ struct Favorite: Identifiable, Codable, Hashable {
     var id = UUID()
     var name: String
     var url: String
-    var thumbnail: Data? = nil
+    /// Key of the artwork in `ThumbnailCache`. Nil when there is none.
+    var thumbnailKey: String? = nil
     /// Set when the user supplied the artwork themselves. Optional so favorites
     /// stored by older versions (and exported files, which omit it) still decode.
     var hasCustomThumbnail: Bool? = nil
@@ -44,11 +45,13 @@ final class FavoritesStore: ObservableObject {
     private let key = Prefs.favorites
 
     init() {
-        let stored = UserDefaultsJSON.load([Favorite].self, from: key) ?? []
-        items = ThumbnailCache.canonicalizing(stored, url: \.url, thumbnail: \.thumbnail)
+        // Thumbnails from older versions lived in UserDefaults and are ignored: those favorites start without artwork.
+        items = UserDefaultsJSON.load([Favorite].self, from: key) ?? []
     }
 
     func favorite(id: Favorite.ID?) -> Favorite? { items.first { $0.id == id } }
+
+    var thumbnailKeys: Set<String> { Set(items.compactMap(\.thumbnailKey)) }
 
     func isNameAvailable(_ name: String, excluding id: Favorite.ID? = nil) -> Bool {
         Favorite.isNameAvailable(name, among: items, excluding: id)
@@ -57,41 +60,40 @@ final class FavoritesStore: ObservableObject {
     /// Adds a favorite under the track's own `id`. Returns false when the name is
     /// taken or the track is already a favorite.
     @discardableResult
-    func add(name: String, url: String, thumbnail: Data? = nil, id: UUID = UUID()) -> Bool {
+    func add(name: String, url: String, thumbnailKey: String? = nil, id: UUID = UUID()) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalName = trimmed.isEmpty ? url : trimmed
         guard favorite(id: id) == nil, isNameAvailable(finalName) else { return false }
-        items.append(Favorite(id: id, name: finalName, url: url, thumbnail: thumbnail))
+        items.append(Favorite(id: id, name: finalName, url: url, thumbnailKey: thumbnailKey))
         return true
     }
 
     /// Store the latest thumbnail for every favorite using `url` (refreshed on every play).
     /// Skips favorites with a custom thumbnail so the user's image is kept.
-    func setThumbnail(_ data: Data, for url: String) {
-        guard let canonical = ThumbnailCache.canonical(data, for: url) else { return }
-        for index in items.indices
-        where items[index].url == url && items[index].hasCustomThumbnail != true && items[index].thumbnail != canonical {
-            items[index].thumbnail = canonical
+    func setThumbnailKey(_ key: String, for url: String) {
+        for index in items.indices where items[index].url == url && items[index].hasCustomThumbnail != true {
+            items[index].thumbnailKey = key
         }
     }
 
     /// Replaces a favorite's artwork with a user-supplied image and marks it
-    /// custom, so automatic fetching never overwrites it. Returns the canonical
-    /// bytes (for propagating to recents / the player), or nil when the data is
-    /// not a decodable image.
+    /// custom, so automatic fetching never overwrites it. Returns the stored key
+    /// (for propagating to recents / the player), or nil when the data is not
+    /// a decodable image.
     @discardableResult
-    func setCustomThumbnail(_ data: Data, for id: Favorite.ID) -> Data? {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return nil }
-        guard let canonical = ThumbnailCache.canonical(data, for: items[index].url) else { return nil }
-        items[index].thumbnail = canonical
+    func setCustomThumbnail(_ data: Data, for id: Favorite.ID) -> String? {
+        guard let index = items.firstIndex(where: { $0.id == id }), let key = ThumbnailCache.store(data) else {
+            return nil
+        }
+        items[index].thumbnailKey = key
         items[index].hasCustomThumbnail = true
-        return canonical
+        return key
     }
 
     /// Clears a custom thumbnail so automatic fetching can resume.
     func clearCustomThumbnail(for id: Favorite.ID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].thumbnail = nil
+        items[index].thumbnailKey = nil
         items[index].hasCustomThumbnail = nil
     }
 

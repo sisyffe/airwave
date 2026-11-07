@@ -69,7 +69,7 @@ struct FavoriteEditor: View {
 
     private var thumbnailSection: some View {
         VStack(spacing: 6) {
-            Thumbnail(data: favorite.thumbnail, size: Self.thumbnailSize)
+            Thumbnail(key: favorite.thumbnailKey, size: Self.thumbnailSize)
                 .overlay {
                     RoundedRectangle(cornerRadius: Self.thumbnailSize * Self.cornerRadiusScale)
                         .strokeBorder(isDropTargeted ? Color.accentColor : .clear, lineWidth: 2)
@@ -169,19 +169,19 @@ struct FavoriteEditor: View {
     /// Applies a custom image everywhere the track appears: the favorite, its
     /// recent entry, and the Now Playing card when it is the current track.
     private func applyCustomThumbnail(_ data: Data) {
-        guard let canonical = favorites.setCustomThumbnail(data, for: favorite.id) else {
+        guard let key = favorites.setCustomThumbnail(data, for: favorite.id) else {
             message = "That doesn't look like an image."
             return
         }
         message = nil
-        recents.setCustomThumbnail(canonical, for: favorite.id)
-        player.applyArtwork(canonical, for: favorite.url, custom: true)
+        recents.setCustomThumbnailKey(key, for: favorite.id)
+        player.applyArtwork(key: key, for: favorite.url, custom: true)
     }
 
     private func resetThumbnail() {
         favorites.clearCustomThumbnail(for: favorite.id)
         recents.clearCustomThumbnail(for: favorite.id)
-        player.applyArtwork(nil, for: favorite.url, custom: false)
+        player.applyArtwork(key: nil, for: favorite.url, custom: false)
         message = nil
         refetchThumbnail()
     }
@@ -192,9 +192,10 @@ struct FavoriteEditor: View {
         guard !url.isEmpty else { return }
         Task { @MainActor in
             guard let data = await StreamResolver.thumbnail(for: url) else { return }
-            favorites.setThumbnail(data, for: url)
-            recents.setThumbnail(data, for: url)
-            player.applyArtwork(data, for: url, custom: false)
+            guard let key = ThumbnailCache.store(data) else { return }
+            favorites.setThumbnailKey(key, for: url)
+            recents.setThumbnailKey(key, for: url)
+            player.applyArtwork(key: key, for: url, custom: false)
         }
     }
 }

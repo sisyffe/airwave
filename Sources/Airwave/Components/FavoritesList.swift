@@ -67,7 +67,7 @@ private struct FavoriteRow: View {
                 .foregroundStyle(.tertiary)
                 .help("Drag to reorder")
             if isRenaming {
-                Thumbnail(data: favorite.thumbnail, size: 24)
+                Thumbnail(key: favorite.thumbnailKey, size: 24)
                 TextField("Name", text: $renameText)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
@@ -82,7 +82,7 @@ private struct FavoriteRow: View {
                 // click-to-play from blocking the List's native reordering.
                 Button(action: onPlay) {
                     HStack(spacing: 6) {
-                        Thumbnail(data: favorite.thumbnail, size: 24)
+                        Thumbnail(key: favorite.thumbnailKey, size: 24)
                         Text(favorite.name).font(.caption).lineLimit(1)
                     }
                     .contentShape(Rectangle())
