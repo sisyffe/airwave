@@ -20,9 +20,6 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var streamTitle: String?
     /// Last playback error, shown as an alert by the UI (nil = none).
     @Published private(set) var lastError: String?
-    /// The favorite whose load failed, when the failure came from a favorite, so
-    /// the UI can offer Retry / Edit / Delete (nil = generic error).
-    @Published private(set) var failedFavoriteID: Favorite.ID?
     /// Whether the current item has no known end (live stream / endless radio).
     @Published private(set) var isLive = true
     @Published var volume: Float {
@@ -44,19 +41,12 @@ final class AudioPlayer: ObservableObject {
     private var trimStartOffset: TimeInterval?
     private var trimEndOffset: TimeInterval?
     private var trimApplied = false
-    /// The favorite being played, when known, so its trim (and artwork) resolve
-    /// even when several favorites share the same link.
-    private var currentFavoriteID: Favorite.ID?
     /// Boundary observer that fires when playback crosses the trimmed end.
     private var trimEndObserver: Any?
     /// Fires when the current finite item reaches its end, to replay or stop it.
     private var endOfTrackObserver: NSObjectProtocol?
     /// ICY metadata reader task for the current direct stream, if any.
     private var icyTask: Task<Void, Never>?
-    /// Watches a slow load and re-resolves the stream after the configured delay.
-    private var loadWatchdog: Task<Void, Never>?
-    private var loadWatchdogAttempts = 0
-    private static let maxLoadRefreshAttempts = 3
     /// Guards async playback work; stale work is dropped if the token is no
     /// longer current (a newer play, or a stop).
     private var generation = PlaybackGeneration()
@@ -87,30 +77,19 @@ final class AudioPlayer: ObservableObject {
         let wasPlaying: Bool
         let trimStartOffset: TimeInterval?
         let trimEndOffset: TimeInterval?
-        let favoriteID: Favorite.ID?
     }
 
-    func play(
-        urlString: String, title: String? = nil, artwork knownArtwork: Data? = nil, customArtwork: Bool = false,
-        favoriteID: Favorite.ID? = nil, isRetry: Bool = false
-    ) async {
+    func play(urlString: String, title: String? = nil, artwork knownArtwork: Data? = nil, customArtwork: Bool = false) async {
         hasStarted = true
         lastError = nil
-        failedFavoriteID = nil
-        // A user-initiated play restarts the slow-load watchdog; a retry keeps it.
-        if !isRetry { cancelLoadWatchdog() }
         let playGeneration = generation.begin()
         let previous = Snapshot(
             url: sourceURL, title: self.title, artwork: artwork, artworkIsCustom: artworkIsCustom,
             item: player.currentItem, wasPlaying: isPlaying, trimStartOffset: trimStartOffset,
-            trimEndOffset: trimEndOffset, favoriteID: currentFavoriteID)
+            trimEndOffset: trimEndOffset)
         artworkIsCustom = customArtwork
-        currentFavoriteID = favoriteID
         // A favorite may define a trim range; it applies wherever the URL plays.
-        // An explicit id wins so duplicate links with different trims stay distinct.
-        let favorite =
-            favoriteID.flatMap { FavoritesStore.shared.favorite(id: $0) }
-            ?? FavoritesStore.shared.favorite(for: urlString)
+        let favorite = FavoritesStore.shared.favorite(for: urlString)
         trimStartOffset = favorite?.startOffset
         trimEndOffset = favorite?.endOffset
         trimApplied = false
@@ -124,9 +103,7 @@ final class AudioPlayer: ObservableObject {
             await refreshArtwork(resolved, page: urlString, playGeneration: playGeneration)
         } catch {
             guard generation.isCurrent(playGeneration) else { return }  // a newer link owns the UI
-            let failedID = currentFavoriteID
             restore(previous)  // keep whatever was playing…
-            failedFavoriteID = failedID
             lastError = error.localizedDescription  // …and surface the problem as an alert
         }
     }
@@ -144,7 +121,6 @@ final class AudioPlayer: ObservableObject {
         self.title = title ?? urlString
         artwork = knownArtwork
         updateNowPlaying()
-        startLoadWatchdogIfNeeded()
     }
 
     /// Swaps in the resolved stream, starts playback and wires up failure handling.
@@ -173,31 +149,6 @@ final class AudioPlayer: ObservableObject {
         return AVPlayerItem(asset: AVURLAsset(url: resolved.streamURL, options: options))
     }
 
-    /// Starts the slow-load watchdog for the current loading episode, unless one
-    /// is already running or auto-refresh is disabled.
-    private func startLoadWatchdogIfNeeded() {
-        guard loadWatchdog == nil else { return }
-        let seconds = Prefs.slowLoadRefreshSeconds()
-        guard seconds > 0 else { return }
-        loadWatchdog = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
-                guard let self, !Task.isCancelled, self.state == .loading else { return }
-                guard self.loadWatchdogAttempts < Self.maxLoadRefreshAttempts else { return }
-                self.loadWatchdogAttempts += 1
-                await self.play(
-                    urlString: self.sourceURL, title: self.title, artwork: self.artwork,
-                    customArtwork: self.artworkIsCustom, favoriteID: self.currentFavoriteID, isRetry: true)
-            }
-        }
-    }
-
-    private func cancelLoadWatchdog() {
-        loadWatchdog?.cancel()
-        loadWatchdog = nil
-        loadWatchdogAttempts = 0
-    }
-
     /// Refreshes the artwork even when a cached one was supplied (from
     /// favorites/recents), so covers stay up to date on every play.
     private func refreshArtwork(_ resolved: StreamResolver.Resolved, page: String, playGeneration: Int) async {
@@ -222,9 +173,7 @@ final class AudioPlayer: ObservableObject {
     /// The item we just swapped in never actually started; put back what was playing before.
     private func itemFailed(_ item: AVPlayerItem, previous: Snapshot) {
         let message = item.error?.localizedDescription ?? "Playback failed"
-        let failedID = currentFavoriteID
         if case .loading = state { restore(previous) }
-        failedFavoriteID = failedID
         lastError = message
     }
 
@@ -235,7 +184,6 @@ final class AudioPlayer: ObservableObject {
         // the item being brought back.
         trimStartOffset = snapshot.trimStartOffset
         trimEndOffset = snapshot.trimEndOffset
-        currentFavoriteID = snapshot.favoriteID
         trimApplied = false
         removeTrimEndObserver()
         if let item = snapshot.item, player.currentItem !== item {
@@ -357,11 +305,7 @@ final class AudioPlayer: ObservableObject {
     func resume() {
         guard player.currentItem != nil else {
             if !sourceURL.isEmpty {
-                Task {
-                    await play(
-                        urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom,
-                        favoriteID: currentFavoriteID)
-                }
+                Task { await play(urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom) }
             }
             return
         }
@@ -374,16 +318,6 @@ final class AudioPlayer: ObservableObject {
 
     func pause() { player.pause() }
     func toggle() { isPlaying ? pause() : resume() }
-
-    /// Moves the volume to the next or previous stop (⌘↑ / ⌘↓).
-    func stepVolume(up: Bool) {
-        let stops = Volume.stops
-        if up {
-            volume = stops.first { $0 > volume + 0.001 } ?? Volume.maximum
-        } else {
-            volume = stops.last { $0 < volume - 0.001 } ?? 0
-        }
-    }
 
     /// Jumps forward (positive) or backward (negative) by `seconds`, clamped to
     /// the track. No-op for live streams, which have no seekable timeline.
@@ -402,24 +336,18 @@ final class AudioPlayer: ObservableObject {
     /// existing title and artwork so the UI does not flicker.
     func refresh() {
         guard !sourceURL.isEmpty else { return }
-        Task {
-            await play(
-                urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom,
-                favoriteID: currentFavoriteID)
-        }
+        Task { await play(urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom) }
     }
 
     func stop() {
         // Invalidate in-flight work so a stream still resolving (or artwork still
         // downloading) cannot start playback or paint artwork after the stop.
         generation.invalidate()
-        cancelLoadWatchdog()
         removeEndOfTrackObserver()
         removeDurationObserver()
         removeTrimEndObserver()
         trimStartOffset = nil
         trimEndOffset = nil
-        currentFavoriteID = nil
         trimApplied = false
         player.pause()
         player.replaceCurrentItem(with: nil)
@@ -441,8 +369,7 @@ final class AudioPlayer: ObservableObject {
     /// Starts reading ICY metadata for direct radio streams. Adopts the station
     /// name as the title when the title is still just the raw URL.
     private func startICYIfEligible(_ resolved: StreamResolver.Resolved, playGeneration: Int) {
-        guard resolved.isDirect, ICYMetadata.isEligible(resolved.streamURL, contentType: resolved.contentType)
-        else { return }
+        guard resolved.isDirect, ICYMetadata.isEligible(resolved.streamURL) else { return }
         let url = resolved.streamURL
         icyTask = Task { [weak self] in
             for await info in ICYMetadata.stream(from: url) {
@@ -457,10 +384,7 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    func clearError() {
-        lastError = nil
-        failedFavoriteID = nil
-    }
+    func clearError() { lastError = nil }
 
     private func syncState(_ status: AVPlayer.TimeControlStatus) {
         switch status {
@@ -469,7 +393,6 @@ final class AudioPlayer: ObservableObject {
         case .paused: if player.currentItem != nil && state != .loading { state = .paused }
         @unknown default: break
         }
-        if state != .loading { cancelLoadWatchdog() }
         updateNowPlaying()
     }
 
@@ -516,6 +439,4 @@ final class AudioPlayer: ObservableObject {
 extension Notification.Name {
     /// Posted when a thumbnail is fetched for a URL (object: url String, userInfo["data"]: Data).
     static let airwaveArtwork = Notification.Name("airwaveArtwork")
-    /// Posted to toggle the current track's favorite state (⌘F).
-    static let airwaveToggleFavorite = Notification.Name("airwaveToggleFavorite")
 }

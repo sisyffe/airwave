@@ -11,7 +11,6 @@ struct FavoriteEditor: View {
     @State private var showImporter = false
     @State private var message: String?
     @State private var isDropTargeted = false
-    @FocusState private var isNameFocused: Bool
 
     private static let thumbnailSize: CGFloat = 72
     /// Matches `Thumbnail`'s corner radius so the drop highlight aligns.
@@ -26,11 +25,6 @@ struct FavoriteEditor: View {
             Section {
                 thumbnailSection
                 TextField("Name", text: $favorite.name)
-                    .focused($isNameFocused)
-                    .onSubmit { commitName() }
-                    .onChange(of: isNameFocused) { focused in
-                        if !focused { commitName() }
-                    }
                 TextField("Link", text: $favorite.url)
                     .help("YouTube URL or direct audio/HLS stream URL")
                 if !favorite.url.isEmpty && !looksPlayable {
@@ -44,7 +38,7 @@ struct FavoriteEditor: View {
                         Task {
                             await player.play(
                                 urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail,
-                                customArtwork: favorite.hasCustomThumbnail == true, favoriteID: favorite.id)
+                                customArtwork: favorite.hasCustomThumbnail == true)
                         }
                     } label: {
                         Label("Play", systemImage: "play.fill")
@@ -85,33 +79,15 @@ struct FavoriteEditor: View {
                         .strokeBorder(isDropTargeted ? Color.accentColor : .clear, lineWidth: 2)
                 }
                 .onDrop(of: [UTType.image], isTargeted: $isDropTargeted, perform: handleDrop)
-            HStack(spacing: 4) {
-                Text("Thumbnail:")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Button {
-                    pasteThumbnail()
-                } label: {
-                    Image(systemName: "doc.on.clipboard")
-                }
-                .help("Paste an image from the clipboard")
-                Button {
-                    showImporter = true
-                } label: {
-                    Image(systemName: "photo")
-                }
-                .help("Choose an image file")
-                if favorite.hasCustomThumbnail == true {
-                    Button {
-                        resetThumbnail()
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                    }
-                    .help("Reset to the fetched artwork")
-                }
+            HStack(spacing: 6) {
+                Button("Paste Image") { pasteThumbnail() }
+                Button("Choose Image…") { showImporter = true }
             }
-            .buttonStyle(.borderless)
             .controlSize(.small)
+            if favorite.hasCustomThumbnail == true {
+                Button("Reset to default") { resetThumbnail() }
+                    .controlSize(.small)
+            }
             if let message {
                 Text(message).font(.caption2).foregroundStyle(.orange)
             }
@@ -152,11 +128,6 @@ struct FavoriteEditor: View {
     private func setTime(_ time: Binding<TimeInterval?>, minutes: Int, seconds: Int) {
         let total = minutes * 60 + seconds
         time.wrappedValue = total == 0 ? nil : TimeInterval(total)
-    }
-
-    /// Commits a name edit so a taken name is suffixed rather than duplicated.
-    private func commitName() {
-        favorites.commitName(id: favorite.id, name: favorite.name)
     }
 
     private func pasteThumbnail() {

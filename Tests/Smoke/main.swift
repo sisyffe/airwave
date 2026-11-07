@@ -68,33 +68,6 @@ do {
     )
 
     check(!Prefs.defaultShowExtraSeekControls, "extra seek controls default to off")
-
-    check(
-        Prefs.thumbnailDisplayMode(using: defaults) == .fill,
-        "thumbnail display defaults to fill when unset"
-    )
-    defaults.set(ThumbnailDisplayMode.blurredFill.rawValue, forKey: Prefs.thumbnailDisplayMode)
-    check(
-        Prefs.thumbnailDisplayMode(using: defaults) == .blurredFill,
-        "thumbnail display respects a stored value"
-    )
-    defaults.set("nonsense", forKey: Prefs.thumbnailDisplayMode)
-    check(
-        Prefs.thumbnailDisplayMode(using: defaults) == .fill,
-        "an unrecognized thumbnail display falls back to fill"
-    )
-
-    check(
-        Prefs.slowLoadRefreshSeconds(using: defaults) == Prefs.defaultSlowLoadRefreshSeconds,
-        "slow-load refresh defaults to 4 seconds"
-    )
-    defaults.set(0, forKey: Prefs.slowLoadRefreshSeconds)
-    check(Prefs.slowLoadRefreshSeconds(using: defaults) == 0, "slow-load refresh can be disabled")
-    defaults.set(99, forKey: Prefs.slowLoadRefreshSeconds)
-    check(
-        Prefs.slowLoadRefreshSeconds(using: defaults) == Prefs.defaultSlowLoadRefreshSeconds,
-        "an out-of-range slow-load delay falls back to the default"
-    )
 }
 
 // MARK: FavoritesIO
@@ -108,47 +81,35 @@ do {
     let encoded = try! FavoritesIO.encode(items)
     let json = try! JSONSerialization.jsonObject(with: encoded) as! [[String: Any]]
     check(
-        json.allSatisfy { Set($0.keys) == Set(["name", "url"]) },
-        "export includes only favorite name and URL"
+        json.allSatisfy { Set($0.keys) == Set(["id", "name", "url"]) },
+        "export includes only favorite id, name, and URL"
     )
 
     let decoded = try! FavoritesIO.decode(encoded)
     let metadataRoundTrips = decoded.count == items.count
         && zip(decoded, items).allSatisfy { exported, original in
-            exported.name == original.name && exported.url == original.url
+            exported.id == original.id && exported.name == original.name && exported.url == original.url
         }
     check(
         metadataRoundTrips,
         "export/import preserves favorite metadata"
     )
     check(decoded.allSatisfy { $0.thumbnail == nil }, "imported favorites have no exported thumbnail")
-    check(
-        decoded.map(\.id) != items.map(\.id),
-        "import regenerates favorite UUIDs"
-    )
 
-    // A duplicate link under a different name is allowed and kept; an exact
-    // (name, link, trim) match is auto-merged.
     let incoming = [
-        Favorite(name: "Station One", url: "https://example.com/one.mp3"),
         Favorite(name: "Duplicate", url: "https://example.com/one.mp3"),
         Favorite(name: "New", url: "https://example.com/three.aac"),
         Favorite(name: "Empty", url: "")
     ]
     let merged = FavoritesIO.merge(incoming, into: items)
-    check(merged.added == 2, "merge adds new identities and skips exact duplicates")
+    check(merged.added == 1, "merge counts only new, non-empty URLs")
     check(
         merged.items.map(\.url) == [
             "https://example.com/one.mp3",
             "https://example.com/two.m3u8",
-            "https://example.com/one.mp3",
             "https://example.com/three.aac"
         ],
         "merge preserves existing order and appends new entries"
-    )
-    check(
-        merged.items.map(\.name) == ["Station One", "Station Two", "Duplicate", "New"],
-        "merge suffixes only on name collisions"
     )
 
     let exported = try! FavoritesIO.decode(FavoritesIO.encode(items + [Favorite(name: "Draft", url: "")]))
@@ -173,67 +134,6 @@ do {
         roundTrip.first?.startOffset == 30 && roundTrip.first?.endOffset == 90,
         "trim offsets round-trip through export/import"
     )
-}
-
-// MARK: FavoritesIO conflict handling
-
-do {
-    let existing = [Favorite(name: "Station One", url: "https://example.com/one.mp3")]
-    let incoming = [
-        Favorite(name: "Station One", url: "https://example.com/one.mp3"),
-        Favorite(name: "Station One", url: "https://example.com/three.aac"),
-        Favorite(name: "Other", url: "https://example.com/two.mp3")
-    ]
-    let plan = FavoritesIO.plan(incoming, into: existing)
-    check(plan.duplicates == 1, "an exact duplicate is auto-merged")
-    check(plan.additions.count == 1 && plan.additions.first?.name == "Other", "non-conflicting entries are additions")
-    check(
-        plan.conflicts.count == 1 && plan.conflicts.first?.url == "https://example.com/three.aac",
-        "a same-name, different link is a conflict"
-    )
-
-    let suffixed = FavoritesIO.apply(plan, policy: .suffix, to: existing)
-    check(suffixed.added == 2, "suffix adds both the addition and the conflict")
-    check(suffixed.items.map(\.name) == ["Station One", "Other", "Station One 2"], "suffix keeps names unique")
-
-    let skipped = FavoritesIO.apply(plan, policy: .skip, to: existing)
-    check(skipped.added == 1 && skipped.items.count == 2, "skip drops conflicts but keeps additions")
-
-    let overwritten = FavoritesIO.apply(plan, policy: .overwrite, to: existing)
-    check(overwritten.items.first?.url == "https://example.com/three.aac", "overwrite replaces the existing favorite")
-    check(Set(overwritten.items.map(\.name)).count == overwritten.items.count, "overwrite keeps names unique")
-}
-
-// MARK: FavoriteNaming
-
-do {
-    check(
-        FavoriteNaming.unique("Jazz", url: "https://example.com/j", taken: []) == "Jazz",
-        "a free name is kept"
-    )
-    check(
-        FavoriteNaming.unique("Jazz", url: "https://example.com/j", taken: ["Jazz"]) == "Jazz 2",
-        "a taken name is suffixed"
-    )
-    check(
-        FavoriteNaming.unique("Jazz", url: "https://example.com/j", taken: ["Jazz", "Jazz 2"]) == "Jazz 3",
-        "suffixing skips existing numbered names"
-    )
-    check(
-        FavoriteNaming.unique("   ", url: "https://example.com/j", taken: []) == "https://example.com/j",
-        "a blank name falls back to the URL"
-    )
-}
-
-// MARK: Favorite identity
-
-do {
-    let base = Favorite(name: "Song", url: "https://example.com/s.mp3")
-    let sameTrim = Favorite(name: "Song", url: "https://example.com/s.mp3", startOffset: 30, endOffset: 60)
-    let otherTrim = Favorite(name: "Song", url: "https://example.com/s.mp3", startOffset: 90, endOffset: 60)
-    check(base.identityKey == Favorite(name: "Song", url: "https://example.com/s.mp3").identityKey, "identity ignores the UUID")
-    check(base.identityKey != sameTrim.identityKey, "different trim offsets are different identities")
-    check(sameTrim.identityKey != otherTrim.identityKey, "different trims of one link are distinct")
 }
 
 // MARK: RecentTrack
@@ -277,52 +177,11 @@ do {
     check(URLValidation.httpURL(from: "https:///audio.mp3") == nil, "URLs without a host are rejected")
 }
 
-// MARK: Volume
-
-do {
-    check(Volume.stops == [0, 0.25, 0.5, 0.75, 1.0], "volume has five evenly spaced stops")
-    check(Volume.stops.last == Volume.maximum, "the last stop is the maximum")
-    check(Volume.stops.first == 0, "the first stop is zero")
-}
-
-// MARK: StreamSniffer
-
-do {
-    check(
-        StreamSniffer.kind(forMimeType: "application/vnd.apple.mpegurl; charset=utf-8") == .hls,
-        "HLS MIME types classify as hls"
-    )
-    check(StreamSniffer.kind(forMimeType: "audio/mpeg") == .audio, "audio MIME types classify as audio")
-    check(StreamSniffer.kind(forMimeType: "application/octet-stream") == .audio, "octet-stream classifies as audio")
-    check(StreamSniffer.kind(forMimeType: "text/html") == .page, "HTML MIME types classify as page")
-    check(StreamSniffer.kind(forMimeType: nil) == nil, "a missing MIME type is inconclusive")
-    check(
-        StreamSniffer.kind(forBody: Data("#EXTM3U\n#EXT-X-VERSION:3".utf8), mimeType: nil) == .hls,
-        "an #EXTM3U body classifies as hls"
-    )
-    check(
-        StreamSniffer.kind(forBody: Data("<!DOCTYPE html><html>".utf8), mimeType: nil) == .page,
-        "an HTML body classifies as page"
-    )
-    check(
-        StreamSniffer.kind(forBody: Data([0x00, 0x01, 0x02, 0x03]), mimeType: nil) == nil,
-        "an unknown body is inconclusive"
-    )
-}
-
 // MARK: ICYMetadata
 
 do {
     check(ICYMetadata.isEligible(URL(string: "https://example.com/stream.mp3")!), "mp3 is ICY-eligible")
     check(!ICYMetadata.isEligible(URL(string: "https://example.com/stream.m3u8")!), "m3u8 is not ICY-eligible")
-    check(
-        ICYMetadata.isEligible(URL(string: "https://example.com/live")!, contentType: "audio/mpeg"),
-        "an extensionless audio stream is ICY-eligible"
-    )
-    check(
-        !ICYMetadata.isEligible(URL(string: "https://example.com/live")!, contentType: "application/vnd.apple.mpegurl"),
-        "an extensionless HLS stream is not ICY-eligible"
-    )
 
     func block(_ text: String) -> [UInt8] { Array(text.utf8) }
     check(

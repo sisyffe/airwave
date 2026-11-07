@@ -6,17 +6,8 @@ import UniformTypeIdentifiers
 /// metadata-only JSON import/export.
 struct FavoritesPreferences: View {
     @EnvironmentObject var favorites: FavoritesStore
-    @ObservedObject private var router = SettingsRouter.shared
     @State private var selectedFavoriteID: Favorite.ID?
     @State private var message: String?
-    @State private var refreshProgress: (completed: Int, total: Int)?
-    @State private var pendingImport: PendingImport?
-
-    /// A decoded import waiting for the user to resolve name conflicts.
-    private struct PendingImport {
-        let plan: FavoritesIO.ImportPlan
-        let existingURLs: Set<String>
-    }
 
     private var selectedBinding: Binding<Favorite>? {
         guard let id = selectedFavoriteID,
@@ -72,20 +63,6 @@ struct FavoritesPreferences: View {
                     .disabled(selectedFavoriteID == nil)
                     .help("Delete the selected favorite")
                     Spacer()
-                    if let progress = refreshProgress {
-                        Text("\(progress.completed)/\(progress.total)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    Button {
-                        refreshThumbnails()
-                    } label: {
-                        Label("Refresh thumbnails", systemImage: "arrow.triangle.2.circlepath")
-                            .labelStyle(.iconOnly)
-                    }
-                    .disabled(favorites.items.isEmpty || refreshProgress != nil)
-                    .help("Re-fetch artwork for all favorites and recents (custom images are kept)")
                     Button("Import…") { importFavorites() }
                         .help("Merge favorites from a JSON file")
                     Button("Export…") { exportFavorites() }
@@ -111,40 +88,15 @@ struct FavoritesPreferences: View {
             .frame(minWidth: 240)
         }
         .onDrop(of: [UTType.fileURL], isTargeted: nil, perform: importDroppedFile)
-        .onAppear { selectPendingFavorite() }
-        .onChange(of: router.pendingFavoriteID) { _ in selectPendingFavorite() }
         .alert("Favorites", isPresented: messageShown) {
             Button("OK") { message = nil }
         } message: {
             Text(message ?? "")
         }
-        .confirmationDialog(
-            "Name conflicts",
-            isPresented: pendingImportShown,
-            titleVisibility: .visible
-        ) {
-            Button("Keep Both") { resolveImport(policy: .suffix) }
-            Button("Overwrite") { resolveImport(policy: .overwrite) }
-            Button("Ignore Imported") { resolveImport(policy: .skip) }
-            Button("Cancel", role: .cancel) { pendingImport = nil }
-        } message: {
-            Text("\(pendingImport?.plan.conflicts.count ?? 0) imported favorite(s) use a name that already exists.")
-        }
     }
 
     private var messageShown: Binding<Bool> {
         Binding(get: { message != nil }, set: { if !$0 { message = nil } })
-    }
-
-    private var pendingImportShown: Binding<Bool> {
-        Binding(get: { pendingImport != nil }, set: { if !$0 { pendingImport = nil } })
-    }
-
-    /// Selects a favorite requested via "Show in Settings", if any.
-    private func selectPendingFavorite() {
-        guard let id = router.pendingFavoriteID else { return }
-        selectedFavoriteID = id
-        router.pendingFavoriteID = nil
     }
 
     private func add() {
@@ -219,48 +171,34 @@ struct FavoritesPreferences: View {
         }
         do {
             let incoming = try FavoritesIO.decode(try Data(contentsOf: url))
-            let plan = FavoritesIO.plan(incoming, into: favorites.items)
             let existingURLs = Set(favorites.items.map(\.url))
-            if plan.hasConflicts {
-                pendingImport = PendingImport(plan: plan, existingURLs: existingURLs)
-            } else {
-                apply(plan, policy: .suffix, existingURLs: existingURLs)
-            }
+            let result = FavoritesIO.merge(incoming, into: favorites.items)
+            favorites.items = result.items
+            loadThumbnails(for: result.items.filter { !existingURLs.contains($0.url) })
+            message = result.added > 0 ? "Imported \(result.added) favorite(s)." : "No new favorites to import."
         } catch {
             message = "Import failed: \(error.localizedDescription)"
         }
     }
 
-    /// Applies the import once the user has chosen how to resolve conflicts.
-    private func resolveImport(policy: FavoritesIO.ImportPolicy) {
-        guard let pending = pendingImport else { return }
-        pendingImport = nil
-        apply(pending.plan, policy: policy, existingURLs: pending.existingURLs)
-    }
-
-    private func apply(
-        _ plan: FavoritesIO.ImportPlan, policy: FavoritesIO.ImportPolicy, existingURLs: Set<String>
-    ) {
-        let result = FavoritesIO.apply(plan, policy: policy, to: favorites.items)
-        favorites.items = result.items
-        loadThumbnails(for: result.items.filter { !existingURLs.contains($0.url) })
-        message = result.added > 0 ? "Imported \(result.added) favorite(s)." : "No new favorites to import."
-    }
-
     private func loadThumbnails(for importedFavorites: [Favorite]) {
         guard !importedFavorites.isEmpty else { return }
-        Task { @MainActor in
-            await ThumbnailRefresher.refresh(urls: importedFavorites.map(\.url))
-        }
-    }
 
-    private func refreshThumbnails() {
-        refreshProgress = (0, 0)
         Task { @MainActor in
-            await ThumbnailRefresher.refreshAll { completed, total in
-                refreshProgress = (completed, total)
+            await withTaskGroup(of: (String, Data?).self) { group in
+                for favorite in importedFavorites {
+                    group.addTask {
+                        let thumbnail = await StreamResolver.thumbnail(for: favorite.url)
+                        return (favorite.url, thumbnail)
+                    }
+                }
+
+                for await (url, thumbnail) in group {
+                    if let thumbnail {
+                        favorites.setThumbnail(thumbnail, for: url)
+                    }
+                }
             }
-            refreshProgress = nil
         }
     }
 }

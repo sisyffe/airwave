@@ -13,11 +13,19 @@ struct AddFavoriteSheet: View {
         self.thumbnail = thumbnail
     }
 
+    /// The URL is already saved, so `FavoritesStore.add` would silently no-op.
+    private var isDuplicate: Bool { favorites.contains(url: url) }
+
     var body: some View {
         VStack(spacing: 8) {
             Thumbnail(data: thumbnail, size: 64)
             TextField("Name", text: $name).textFieldStyle(.roundedBorder)
             Text(url).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            if isDuplicate {
+                Label("Already in Favorites", systemImage: "star.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
@@ -25,6 +33,7 @@ struct AddFavoriteSheet: View {
                     favorites.add(name: name, url: url, thumbnail: thumbnail); dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
+                .disabled(isDuplicate)
             }
         }
         .padding(12)

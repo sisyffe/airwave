@@ -89,38 +89,13 @@ struct ContentView: View {
         .onAppear {
             isLinkFocused = true
         }
-        // Clear the input when playback starts from elsewhere (favorites, recents,
-        // hotstart) so the field never looks out of sync — unless the user is
-        // actively editing it.
-        .onChange(of: player.sourceURL) { _ in
-            if !isLinkFocused { link = "" }
-        }
         .sheet(isPresented: $showAddFavorite) {
             AddFavoriteSheet(initialName: player.title, url: player.sourceURL, thumbnail: player.artwork)
         }
-        .alert(
-            player.failedFavoriteID == nil ? "Playback failed" : "Couldn't load this favorite",
-            isPresented: errorShown
-        ) {
-            if let id = player.failedFavoriteID, let favorite = favorites.favorite(id: id) {
-                Button("Retry") { retry(favorite) }
-                Button("Edit Link…") { SettingsRouter.shared.show(favoriteID: id) }
-                Button("Delete", role: .destructive) { favorites.remove(favorite) }
-                Button("Cancel", role: .cancel) {}
-            } else {
-                Button("OK") { player.clearError() }
-            }
+        .alert("Playback failed", isPresented: errorShown) {
+            Button("OK") { player.clearError() }
         } message: {
             Text(player.lastError ?? "")
-        }
-    }
-
-    private func retry(_ favorite: Favorite) {
-        player.clearError()
-        Task {
-            await player.play(
-                urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail,
-                customArtwork: favorite.hasCustomThumbnail == true, favoriteID: favorite.id)
         }
     }
 
@@ -135,7 +110,7 @@ struct ContentView: View {
         Task {
             await player.play(
                 urlString: url, title: favorite?.name, artwork: favorite?.thumbnail,
-                customArtwork: favorite?.hasCustomThumbnail == true, favoriteID: favorite?.id)
+                customArtwork: favorite?.hasCustomThumbnail == true)
         }
     }
 

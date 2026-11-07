@@ -14,13 +14,21 @@ struct NowPlayingCard: View {
     /// Square box shared by the favorite star and the options arrow so the two
     /// corner buttons read as symmetrical (glyphs stay at their own sizes).
     private static let controlButtonSize: CGFloat = 16
+    private static let maximumVolume: Float = 1.0
+    private static let volumeSnap: Float = maximumVolume / 50
+    private static let volumeStep: Float = maximumVolume / 4
+    /// Volume stops are generated from the slider range; the slider snaps to a stop when it gets close.
+    private static var volumeStops: [Float] {
+        let stops = stride(from: 0, through: maximumVolume, by: volumeStep).map { $0 }
+        return stops.last == maximumVolume ? stops : stops + [maximumVolume]
+    }
 
     private var volumeBinding: Binding<Float> {
         Binding(
             get: { player.volume },
             set: { newVolume in
-                let clamped = min(max(newVolume, 0), Volume.maximum)
-                if let stop = Volume.stops.first(where: { abs($0 - clamped) <= Volume.snap }) {
+                let clamped = min(max(newVolume, 0), Self.maximumVolume)
+                if let stop = Self.volumeStops.first(where: { abs($0 - clamped) <= Self.volumeSnap }) {
                     player.volume = stop
                 } else {
                     player.volume = clamped
@@ -76,7 +84,7 @@ struct NowPlayingCard: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Image(systemName: "speaker.fill").frame(width: 16)
-                Slider(value: volumeBinding, in: 0...Volume.maximum) { isEditing in
+                Slider(value: volumeBinding, in: 0...Self.maximumVolume) { isEditing in
                     isAdjustingVolume = isEditing
                 }
                 .controlSize(.mini)
@@ -94,7 +102,7 @@ struct NowPlayingCard: View {
                                 .background(.regularMaterial, in: Capsule())
                                 .position(
                                     x: thumbRadius
-                                        + CGFloat(player.volume / Volume.maximum)
+                                        + CGFloat(player.volume / Self.maximumVolume)
                                         * (geometry.size.width - 2 * thumbRadius),
                                     y: -16
                                 )
@@ -126,19 +134,12 @@ struct NowPlayingCard: View {
         } message: {
             Text("“\(favorites.favorite(for: player.sourceURL)?.name ?? player.title)” will be removed from your favorites.")
         }
-        .onReceive(NotificationCenter.default.publisher(for: .airwaveToggleFavorite)) { _ in
-            toggleFavorite()
-        }
-    }
-
-    /// Same behavior as the star button, reused by the ⌘F shortcut.
-    private func toggleFavorite() {
-        guard !player.sourceURL.isEmpty else { return }
-        if isFavorite { showRemoveConfirm = true } else { showAddFavorite = true }
     }
 
     private var favoriteButton: some View {
-        Button(action: toggleFavorite) {
+        Button {
+            if isFavorite { showRemoveConfirm = true } else { showAddFavorite = true }
+        } label: {
             Image(systemName: isFavorite ? "star.fill" : "star")
                 .font(.system(size: 14))
                 .foregroundStyle(isFavorite ? Color.accentColor.opacity(0.55) : Color.primary)

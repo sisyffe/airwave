@@ -16,34 +16,9 @@ struct PlaybackOptionsPopover: View {
     private static let longSkip: TimeInterval = 300
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            linkSection
-            controls
-        }
-        .padding(12)
-        .frame(minWidth: 190)
-    }
-
-    private var linkSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Link").font(.caption).foregroundStyle(.secondary)
-            HStack(spacing: 6) {
-                Text(player.sourceURL.isEmpty ? "—" : player.sourceURL)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .help(player.sourceURL)
-                Button {
-                    Clipboard.copy(player.sourceURL)
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
-                .disabled(player.sourceURL.isEmpty)
-                .help("Copy the link")
-            }
-        }
+        controls
+            .padding(12)
+            .frame(minWidth: 190)
     }
 
     private var controls: some View {

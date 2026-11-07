@@ -5,7 +5,7 @@
 ![Platform: macOS 13.0+](https://img.shields.io/badge/platform-macOS%2013.0%2B-blue.svg)
 ![Swift 5.9+](https://img.shields.io/badge/swift-5.9%2B-orange.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
-![Version: 1.1.4](https://img.shields.io/badge/version-1.1.4-informational.svg)
+![Version: 1.1.3](https://img.shields.io/badge/version-1.1.3-informational.svg)
 
 Airwave lets you listen to live internet radio, direct audio streams, and YouTube videos or live broadcasts without keeping a heavy web browser tab open. Designed exclusively for macOS Sonoma and later, it integrates seamlessly with system media controls, the Control Center Now Playing widget, and keyboard shortcuts.
 
@@ -16,25 +16,21 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
 ## Features
 
 - **Hybrid Stream Playback:** Play direct audio stream URLs (`mp3`, `aac`, `m4a`, `m3u8`, etc.) and extract audio-only or HLS live streams from YouTube links automatically.
-- **Favorites Management:** Save your favorite stations and streams, rename them in **Settings → Favorites**, remove them from the row's `…` menu, and reorder them by dragging (both in the main window and in Settings). Names are unique, but the same link may be saved more than once (for example the same song with different trims). Import and export your list as a lossless JSON file from Preferences; when an import collides on a name, Airwave offers to keep both (with a suffix), overwrite, ignore the imported entry, or cancel.
-- **Favorite Recovery:** If a favorite fails to load, its row shows a warning badge and an alert offers **Retry**, **Edit Link**, **Delete**, or **Cancel**.
+- **Favorites Management:** Save your favorite stations and streams, rename them inline, remove them from the row's `…` menu, and reorder them by dragging (both in the main window and in Settings). Import and export your list as a lossless JSON file from Preferences.
 - **Custom Thumbnails:** In **Settings → Favorites**, give a favorite your own artwork by pasting an image, importing a file, or dragging one onto the thumbnail. The cover is applied everywhere the track appears — Favorites, Recents and the Now Playing card — and is never replaced by automatic artwork fetching. **Reset to default** clears it and re-fetches the automatic artwork.
 - **Recent History:** A Recents view — switched with Favorites from the bar at the bottom of the main window — remembers your recently played tracks for quick replay, numbered in order (the same numbering appears in the Dock menu's **Recent Tracks** submenu). The history size (1–20, default 5) and a "Clear history" action live in **Settings → Recents**.
-- **Volume Control:** In-app volume slider from 0% to 100% (default 75%), with snap stops every 25%, adjustable with `⌘↑` / `⌘↓`.
-- **Thumbnail Display:** Choose in **Settings → General** how artwork fits its frame — **Fill** (crop), **Fit** (letterbox), or **Blurred fill**. **Settings → Favorites** has a **Refresh thumbnails** action that re-fetches artwork for all favorites and recents (custom images are kept).
+- **Volume Control:** In-app volume slider from 0% to 100% (default 75%), with snap stops every 25%.
 - **ICY "Now Playing" Metadata:** For direct radio streams (Icecast/Shoutcast), Airwave reads inline ICY metadata to show the station name and the current song — in the player card and in macOS Control Center.
-- **Smart Artwork & Metadata Caching:** Automatically fetches and downscales thumbnails from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons. Newly imported favorites use YouTube's video thumbnail when available and load thumbnails once in parallel; covers are also refreshed on every play and stored, content-addressed, in the app's cache directory.
+- **Smart Artwork & Metadata Caching:** Automatically fetches and downscales thumbnails from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons. Newly imported favorites use YouTube's video thumbnail when available and load thumbnails once in parallel; covers are also refreshed on every play and persisted alongside your saved favorites and recent tracks.
 - **Native macOS Integration:**
   - Full support for `MPNowPlayingInfoCenter` (Control Center & Lock Screen artwork and playback state) and `MPRemoteCommandCenter` (hardware media keys).
   - Live network status indicator (`Connected`, `Weak connection`, `No network`) with an immediate, color-coded hover label, plus a quick Preferences button embedded directly in the window titlebar.
   - A right-click Dock menu with **Play/Pause** and a **Recent Tracks** submenu for quick playback.
   - Optional **Launch at Login** via `SMAppService`.
-- **Playback Options Popover:** An arrow in the top-right of the player card opens a dropdown showing the current link (with a **Copy link** button) and the seek controls, the latter greyed out for live streams that have no seekable timeline.
+- **Playback Options Popover:** An arrow in the top-right of the player card opens a dropdown with the seek controls, greyed out for live streams that have no seekable timeline.
 - **Seek Controls:** For finite tracks, rewind or fast-forward 10 seconds (regular buttons) or 30 seconds (small buttons). **Settings → Playback** can add a second row of ±1.5 min and ±5 min buttons. Disabled for live streams, which have no seekable timeline.
 - **Track Trimming:** In **Settings → Favorites**, set optional **Start offset** (from the start) and **End offset** (counted back from the end) in minutes and seconds for a favorite to trim its track on playback — applied from any entry point (Favorites, Recents, Dock, hotstart). Live streams ignore trim.
 - **End-of-Track Behavior:** Choose in **Settings → Playback** whether a finished track replays from the start (default) or stops. Applies to finite tracks only; live streams never end.
-- **Slow-Load Auto-Refresh:** If a stream is still loading after a configurable delay (**Settings → Playback**: Never / 2 / 3 / 4 / 6 / 8 / 10 s, default 4 s), Airwave re-resolves it automatically, up to three times.
-- **Keyboard Shortcuts:** `⌘F` toggles the current favorite, `⌘C` copies the playing link, `⌘V` pastes and plays a link, and `⌘↑` / `⌘↓` change the volume. These are disabled while a text field is focused so standard editing shortcuts keep working.
 - **Hotstart:** Optionally resume your last played stream automatically as soon as the app launches. Only a stream that was playing when Airwave closed is resumed — a stopped stream is not restarted.
 - **Background Playback Mode:** Choose whether closing the main window quits the application or keeps Airwave running silently in the background.
 
@@ -46,7 +42,6 @@ Airwave is intentionally lightweight and relies on native `AVFoundation` playbac
 
 ### What Works
 - **Direct Audio & Playlist Streams:** Any `http://` or `https://` URL ending in `.mp3`, `.aac`, `.m4a`, `.m3u8`, `.ogg`, `.opus`, `.wav`, or `.flac`.
-- **Extensionless Streams:** URLs with no recognizable extension are accepted too — Airwave probes the response's content type (and, if needed, its leading bytes) to tell an audio/HLS stream apart from a web page.
 - **YouTube Videos & Live Streams:** Standard links (`youtube.com/watch?v=...`), short links (`youtu.be/...`), shorts (`youtube.com/shorts/...`), live links (`youtube.com/live/...`), and mobile links (`m.youtube.com`, `music.youtube.com`).
 
 ### Limitations (What Does Not Work)
@@ -133,7 +128,7 @@ The app version is single-sourced from `VERSION`: the plugin writes it into `Inf
 
 ### Testing
 
-There is no XCTest/Swift Testing target because those require a full Xcode install; the project is built with the Command Line Tools only. Instead, `smoke-test.sh` builds the app, runs `swift format lint`, and compiles a small harness (`Tests/Smoke/main.swift`) against the Foundation-only logic — preferences, favorites naming/identity and import/export conflict handling, the playback generation gate, stream sniffing, volume stops and ICY metadata parsing — asserting its behaviour:
+There is no XCTest/Swift Testing target because those require a full Xcode install; the project is built with the Command Line Tools only. Instead, `smoke-test.sh` builds the app, runs `swift format lint`, and compiles a small harness (`Tests/Smoke/main.swift`) against the Foundation-only logic — preferences, favorites import/export, the playback generation gate and ICY metadata parsing — asserting its behaviour:
 
 ```bash
 ./smoke-test.sh
@@ -153,21 +148,16 @@ Sources/Airwave/
 ├── Services/                      # Stateful services and persistence
 │   ├── AudioPlayer.swift          # @MainActor AVPlayer wrapper, generation-safe async loading & MediaPlayer integration
 │   ├── StreamResolver.swift       # Direct stream vs. YouTubeKit extraction & OpenGraph/favicon artwork fetching
-│   ├── StreamSniffer.swift        # MIME/body classification for extensionless streams
 │   ├── ICYMetadata.swift          # Icecast/Shoutcast inline metadata reader (station name & current song)
-│   ├── ThumbnailCache.swift       # Content-addressed, on-disk thumbnail store for favorites & recents
-│   ├── ThumbnailRefresher.swift   # Shared re-fetch of artwork for favorites & recents
+│   ├── ThumbnailCache.swift       # Canonical, shared thumbnail downscaling for favorites & recents
 │   ├── ConnectionMonitor.swift    # NWPathMonitor wrapper publishing connection quality
 │   ├── PlaybackGeneration.swift   # Token gate that discards stale/superseded async playback work
-│   ├── SettingsRouter.swift       # Opens Settings focused on a requested favorite
 │   ├── Favorites.swift            # Codable Favorite model & UserDefaults-backed FavoritesStore
-│   ├── FavoritesIO.swift          # Metadata-only JSON export, import & conflict-aware merge for favorites
+│   ├── FavoritesIO.swift          # Metadata-only JSON export, import & merge for favorites
 │   ├── Recents.swift              # UserDefaults-backed RecentsStore (configurable 1–20 history)
 │   └── Prefs.swift                # Centralized UserDefaults keys & defaults
 ├── Utilities/                     # Small, dependency-free helpers
 │   ├── AppInfo.swift              # App name & bundle version (read from Info.plist)
-│   ├── FavoriteNaming.swift       # Unique-name suffixing for favorites
-│   ├── Volume.swift               # Shared volume stops for the slider & shortcuts
 │   ├── NSImage+Downsizing.swift   # PNG downscaling used by thumbnails
 │   └── UserDefaultsJSON.swift     # Shared JSON-in-UserDefaults persistence
 ├── Views/
@@ -182,7 +172,7 @@ Sources/Airwave/
 └── Components/                    # Reusable SwiftUI views
     ├── NowPlayingCard.swift       # Playback header with status pill, title/song, transport & volume slider
     ├── PlaybackOptionsPopover.swift  # Top-right dropdown with the seek controls
-    ├── FavoritesList.swift        # Interactive list with native drag-to-reorder & per-row menu
+    ├── FavoritesList.swift        # Interactive list with inline rename & native drag-to-reorder
     ├── RecentsList.swift          # Recently played tracks with quick replay
     ├── TitlebarButtons.swift      # Network indicator + settings gear shown in the title bar
     ├── TitlebarAccessoryInstaller.swift  # AppKit NSTitlebarAccessoryViewController bridge
@@ -193,14 +183,12 @@ Sources/Airwave/
 ### Key Design Highlights
 - **Concurrency & Generation-Safe Playback (`AudioPlayer` + `PlaybackGeneration`):** Annotated with `@MainActor` and conforming to `ObservableObject`, `AudioPlayer` guards asynchronous work with a small `PlaybackGeneration` token gate. If a user rapidly switches streams while one is still resolving — or stops playback — stale async work is discarded without corrupting the active player state. If a stream fails to resolve, the player gracefully restores the previous stream and state.
 - **Stream Resolution Pipeline (`StreamResolver`):**
-  1. Validates `http`/`https` schemes and hands known direct audio extensions straight to `AVPlayer`.
+  1. Validates `http`/`https` schemes and checks whether the URL extension matches known direct audio formats.
   2. For YouTube URLs, queries `YouTubeKit` locally and selects the best stream in priority order: **HLS live stream** → **highest-bitrate M4A audio-only stream** → **lowest-resolution natively playable muxed stream**.
-  3. For links with no recognized extension, probes the response content type (and leading bytes) via `StreamSniffer` — HLS and audio are played directly, HTML pages are rejected, and a failed probe still attempts playback. Ranged reads are capped so a live stream cannot stall resolution.
-  4. Fetches artwork asynchronously (up to 300 KB of HTML inspected for `og:image` / `twitter:image` meta tags, falling back to Google's S2 favicon service) and downscales images to 256 px PNG data.
-- **ICY Metadata Reader (`ICYMetadata`):** For direct radio streams, a second, audio-less connection parses inline `icy-metaint` blocks to surface the station name and current song without touching the playback pipeline; the task is generation-guarded and cancelled on stop or track change. Eligibility falls back to the probed content type so extensionless audio streams are covered.
-- **Content-Addressed Thumbnails (`ThumbnailCache`):** Thumbnail bytes live once under `~/Library/Caches/Airwave/Thumbnails/<sha256>.png`, while each favorite/recent stores only a lightweight `thumbnailKey`. Owners with identical artwork share a file; owners with different artwork stay independent even on the same link. UserDefaults no longer carries image data, and unreferenced resources are pruned on launch.
-- **Favorites Identity (`FavoritesStore` + `FavoritesIO`):** Names are unique (a taken name is suffixed), while links may repeat, so the same stream can be saved several times with different trims. Import classifies entries before mutating: exact (name, link, trim) duplicates auto-merge and name collisions raise a policy dialog. Internal UUIDs are view/selection identity only — they are stripped on export and regenerated on import.
-- **Lightweight Persistence (`FavoritesStore`, `RecentsStore`, `UserDefaultsJSON` & `Prefs`):** Favorites and recent history are serialized as JSON in `UserDefaults` via a small shared helper (thumbnail bytes excluded), keeping the app completely self-contained with zero external database dependencies.
+  3. Fetches artwork asynchronously (up to 300 KB of HTML inspected for `og:image` / `twitter:image` meta tags, falling back to Google's S2 favicon service) and downscales images to 256 px PNG data for compact storage.
+- **ICY Metadata Reader (`ICYMetadata`):** For direct radio streams, a second, audio-less connection parses inline `icy-metaint` blocks to surface the station name and current song without touching the playback pipeline; the task is generation-guarded and cancelled on stop or track change.
+- **Shared Thumbnails (`ThumbnailCache`):** Favorites and recents keep their own `thumbnail` field in local persistence, but exported favorites JSON contains only the favorite ID, name, and URL. Every image is downscaled through one shared cache, so both lists store identical bytes for the same link instead of each picking its own size.
+- **Lightweight Persistence (`FavoritesStore`, `RecentsStore`, `UserDefaultsJSON` & `Prefs`):** Favorites, recent history, and cached thumbnail `Data` are serialized as JSON in `UserDefaults` via a small shared helper, keeping the app completely self-contained with zero external database dependencies.
 
 ---
 
@@ -213,13 +201,7 @@ Sources/Airwave/
 | **Refresh Stream** | `⌘R` (`Cmd + R`) |
 | **Rewind / Forward 10 s** | `←` / `→` (finite tracks only) |
 | **Rewind / Forward 30 s** | `⇧←` / `⇧→` (finite tracks only) |
-| **Toggle Favorite** | `⌘F` |
-| **Copy Current Link** | `⌘C` |
-| **Paste and Play** | `⌘V` |
-| **Volume Up / Down** | `⌘↑` / `⌘↓` |
 | **Volume Control** | In-app volume slider, 0–100% with 25% snap stops (persisted across launches) |
-
-> The `⌘C` / `⌘V` / `⌘↑` / `⌘↓` shortcuts are disabled while a text field is focused, so standard text-editing behavior is preserved.
 
 ---
 

@@ -17,12 +17,8 @@ enum ICYMetadata {
     private static let metadataBlockUnitSize = 16
 
     /// Whether the URL points at a stream type that can carry ICY metadata.
-    /// Falls back to the probed content type so extensionless audio streams are
-    /// still eligible.
-    static func isEligible(_ url: URL, contentType: String? = nil) -> Bool {
-        if eligibleExtensions.contains(url.pathExtension.lowercased()) { return true }
-        guard let mime = StreamSniffer.normalize(contentType) else { return false }
-        return mime.hasPrefix("audio/") && !mime.contains("mpegurl")
+    static func isEligible(_ url: URL) -> Bool {
+        eligibleExtensions.contains(url.pathExtension.lowercased())
     }
 
     /// Emits an `Info` whenever the station name or current song changes, until
