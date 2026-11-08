@@ -2,13 +2,13 @@ import SwiftUI
 
 struct NowPlayingCard: View {
     @EnvironmentObject var player: AudioPlayer
-    @EnvironmentObject var favorites: FavoritesStore
+    @EnvironmentObject var library: TrackLibrary
     @Binding var showAddFavorite: Bool
     @State private var showRemoveConfirm = false
     @State private var isAdjustingVolume = false
     @State private var showOptions = false
 
-    private var isFavorite: Bool { favorites.contains(url: player.sourceURL) }
+    private var isFavorite: Bool { library.track(player.track?.id)?.isFavorite == true }
     private var volumePercentage: Int { Int((player.volume * 100).rounded()) }
 
     /// Square box shared by the favorite star and the options arrow so the two
@@ -126,13 +126,11 @@ struct NowPlayingCard: View {
             titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) {
-                if let favorite = favorites.favorite(for: player.sourceURL) {
-                    favorites.remove(favorite)
-                }
+                if let id = player.track?.id { library.removeFavorite(id) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("“\(favorites.favorite(for: player.sourceURL)?.name ?? player.title)” will be removed from your favorites.")
+            Text("“\(player.title)” will be removed from your favorites.")
         }
     }
 

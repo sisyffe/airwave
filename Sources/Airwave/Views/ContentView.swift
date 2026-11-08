@@ -5,7 +5,7 @@ struct ContentView: View {
     enum ListMode: Hashable { case favorites, recents }
 
     @EnvironmentObject var player: AudioPlayer
-    @EnvironmentObject var favorites: FavoritesStore
+    @EnvironmentObject var library: TrackLibrary
     @State private var link = ""
     @State private var showAddFavorite = false
     @State private var listMode: ListMode = .favorites
@@ -90,7 +90,9 @@ struct ContentView: View {
             isLinkFocused = true
         }
         .sheet(isPresented: $showAddFavorite) {
-            AddFavoriteSheet(initialName: player.title, url: player.sourceURL, thumbnail: player.artwork)
+            if let track = player.track {
+                AddFavoriteSheet(track: track, thumbnail: player.artwork)
+            }
         }
         .alert("Playback failed", isPresented: errorShown) {
             Button("OK") { player.clearError() }
@@ -106,12 +108,8 @@ struct ContentView: View {
     private func playLink() {
         let url = link.trimmingCharacters(in: .whitespacesAndNewlines)
         guard URLValidation.httpURL(from: url) != nil else { return }
-        let favorite = favorites.favorite(for: url)
-        Task {
-            await player.play(
-                urlString: url, title: favorite?.name, artwork: favorite?.thumbnail,
-                customArtwork: favorite?.hasCustomThumbnail == true)
-        }
+        let track = library.resolve(url: url)
+        Task { await player.play(track) }
     }
 
     private func paste() {

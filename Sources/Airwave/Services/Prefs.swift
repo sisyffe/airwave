@@ -2,11 +2,11 @@ import Foundation
 
 enum Prefs {
     static let hotstart = "hotstart"
-    static let lastURL = "lastURL"
+    /// The last track that was playing, stored whole so hotstart restores it.
+    static let lastTrack = "lastTrack"
     static let volume = "volume"
     static let defaultVolume: Float = 0.75
-    static let favorites = "favorites"
-    static let recentTracks = "recentTracks"
+    static let trackLibrary = "trackLibrary"
     static let recentMaxCount = "recentMaxCount"
     static let defaultRecentMaxCount = 5
     static let minRecentMaxCount = 1
@@ -17,6 +17,7 @@ enum Prefs {
     static let defaultReplayOnTrackEnd = true
     static let showExtraSeekControls = "showExtraSeekControls"
     static let defaultShowExtraSeekControls = false
+    static let manualLinkMode = "manualLinkMode"
 
     static func shouldQuitAfterLastWindowClosed(using defaults: UserDefaults = .standard) -> Bool {
         guard defaults.object(forKey: quitOnLastWindowClosed) != nil else {
@@ -31,5 +32,9 @@ enum Prefs {
             return defaultReplayOnTrackEnd
         }
         return defaults.bool(forKey: replayOnTrackEnd)
+    }
+
+    static func manualLinkMode(using defaults: UserDefaults = .standard) -> ManualLinkMode {
+        defaults.string(forKey: manualLinkMode).flatMap(ManualLinkMode.init(rawValue:)) ?? .defaultMode
     }
 }

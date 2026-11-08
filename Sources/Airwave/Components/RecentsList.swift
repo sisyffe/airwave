@@ -2,23 +2,23 @@ import SwiftUI
 
 struct RecentsList: View {
     @EnvironmentObject var player: AudioPlayer
-    @EnvironmentObject var recents: RecentsStore
+    @EnvironmentObject var library: TrackLibrary
 
     var body: some View {
-        if recents.items.isEmpty {
+        if library.recents.isEmpty {
             Text("No recent tracks yet. Play something to build your history.")
                 .foregroundStyle(.secondary).font(.caption)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
-                ForEach(Array(recents.items.enumerated()), id: \.element.id) { index, track in
+                ForEach(Array(library.recents.enumerated()), id: \.element.id) { index, track in
                     RecentRow(
                         rank: index + 1,
                         track: track,
-                        isCurrent: player.sourceURL == track.url && player.isPlaying,
+                        isCurrent: player.track?.id == track.id && player.isPlaying,
                         onPlay: { play(track) },
-                        onRemove: { recents.remove(track) })
+                        onRemove: { library.removeRecent(track.id) })
                 }
             }
             .listStyle(.plain)
@@ -26,18 +26,14 @@ struct RecentsList: View {
         }
     }
 
-    private func play(_ track: RecentTrack) {
-        Task {
-            await player.play(
-                urlString: track.url, title: track.name, artwork: track.thumbnail,
-                customArtwork: track.hasCustomThumbnail == true)
-        }
+    private func play(_ track: Track) {
+        Task { await player.play(id: track.id) }
     }
 }
 
 private struct RecentRow: View {
     let rank: Int
-    let track: RecentTrack
+    let track: Track
     let isCurrent: Bool
     let onPlay: () -> Void
     let onRemove: () -> Void
@@ -49,7 +45,7 @@ private struct RecentRow: View {
                 .foregroundStyle(.tertiary)
                 .monospacedDigit()
                 .frame(width: 12)
-            Thumbnail(data: track.thumbnail, size: 24)
+            Thumbnail(data: ThumbnailStore.data(for: track.thumbnailKey), size: 24)
             // Align the row separator with the track name (as in the favorites
             // list) instead of the leading rank number.
             Text(track.name)
@@ -86,7 +82,7 @@ private struct RecentRow: View {
 /// Shared recents menu items, used by both the row's "…" menu and its
 /// right-click context menu.
 private struct RecentMenuItems: View {
-    let track: RecentTrack
+    let track: Track
     let onPlay: () -> Void
     let onRemove: () -> Void
 

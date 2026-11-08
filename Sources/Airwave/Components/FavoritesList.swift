@@ -2,22 +2,23 @@ import SwiftUI
 
 struct FavoritesList: View {
     @EnvironmentObject var player: AudioPlayer
-    @EnvironmentObject var favorites: FavoritesStore
-    @State private var renamingID: Favorite.ID?
+    @EnvironmentObject var library: TrackLibrary
+    @State private var renamingID: Track.ID?
+    @State private var renameError: String?
     @State private var renameText = ""
 
     var body: some View {
-        if favorites.items.isEmpty {
+        if library.favorites.isEmpty {
             Text("No favorites yet. Play something, then tap ☆.")
                 .foregroundStyle(.secondary).font(.caption)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
-                ForEach(favorites.items) { favorite in
+                ForEach(library.favorites) { favorite in
                     FavoriteRow(
                         favorite: favorite,
-                        isCurrent: player.sourceURL == favorite.url && player.isPlaying,
+                        isCurrent: player.track?.id == favorite.id && player.isPlaying,
                         isRenaming: renamingID == favorite.id,
                         renameText: $renameText,
                         onPlay: { play(favorite) },
@@ -25,26 +26,29 @@ struct FavoritesList: View {
                             renameText = favorite.name; renamingID = favorite.id
                         },
                         onRenameCommit: { newName in
-                            favorites.rename(favorite, to: newName)
+                            if !library.renameFavorite(favorite.id, to: newName) {
+                                renameError = "A favorite named “\(newName.trimmingCharacters(in: .whitespaces))” already exists."
+                            }
                             renamingID = nil
                         },
-                        onDelete: { favorites.remove(favorite) })
+                        onDelete: { library.removeFavorite(favorite.id) })
                 }
                 .onMove { indices, newOffset in
-                    favorites.items.move(fromOffsets: indices, toOffset: newOffset)
+                    library.moveFavorites(from: indices, to: newOffset)
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .alert("Can't rename", isPresented: Binding(get: { renameError != nil }, set: { if !$0 { renameError = nil } })) {
+                Button("OK") { renameError = nil }
+            } message: {
+                Text(renameError ?? "")
+            }
         }
     }
 
-    private func play(_ favorite: Favorite) {
-        Task {
-            await player.play(
-                urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail,
-                customArtwork: favorite.hasCustomThumbnail == true)
-        }
+    private func play(_ favorite: Track) {
+        Task { await player.play(favorite) }
     }
 }
 
@@ -52,7 +56,7 @@ struct FavoritesList: View {
 /// badge, "…" menu. Reordering is handled natively by the enclosing List;
 /// renaming happens in place, Finder-style.
 private struct FavoriteRow: View {
-    let favorite: Favorite
+    let favorite: Track
     let isCurrent: Bool
     let isRenaming: Bool
     @Binding var renameText: String
@@ -70,7 +74,7 @@ private struct FavoriteRow: View {
                 .foregroundStyle(.tertiary)
                 .help("Drag to reorder")
             if isRenaming {
-                Thumbnail(data: favorite.thumbnail, size: 24)
+                Thumbnail(data: ThumbnailStore.data(for: favorite.thumbnailKey), size: 24)
                 TextField("Name", text: $renameText)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
@@ -85,7 +89,7 @@ private struct FavoriteRow: View {
                 // click-to-play from blocking the List's native reordering.
                 Button(action: onPlay) {
                     HStack(spacing: 6) {
-                        Thumbnail(data: favorite.thumbnail, size: 24)
+                        Thumbnail(data: ThumbnailStore.data(for: favorite.thumbnailKey), size: 24)
                         Text(favorite.name).font(.caption).lineLimit(1)
                     }
                     .contentShape(Rectangle())
@@ -128,7 +132,7 @@ private struct FavoriteRow: View {
 /// Shared favorites menu items, used by both the row's "…" menu and its
 /// right-click context menu.
 private struct FavoriteMenuItems: View {
-    let favorite: Favorite
+    let favorite: Track
     let onPlay: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void

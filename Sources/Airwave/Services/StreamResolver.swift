@@ -77,7 +77,7 @@ enum StreamResolver {
         }
         for candidate in candidates {
             if let (data, _) = try? await URLSession.shared.data(from: candidate),
-                let image = NSImage(data: data), let downscaled = image.downsized(maxSide: ThumbnailCache.maxSide)
+                let image = NSImage(data: data), let downscaled = image.downsized(maxSide: ThumbnailStore.maxSide)
             {
                 return downscaled
             }

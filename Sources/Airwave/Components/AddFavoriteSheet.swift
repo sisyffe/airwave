@@ -1,39 +1,38 @@
 import SwiftUI
 
 struct AddFavoriteSheet: View {
-    @EnvironmentObject var favorites: FavoritesStore
+    @EnvironmentObject var library: TrackLibrary
     @Environment(\.dismiss) private var dismiss
-    @State var name: String
-    let url: String
+    @State private var name: String
+    let track: Track
     let thumbnail: Data?
 
-    init(initialName: String, url: String, thumbnail: Data?) {
-        _name = State(initialValue: initialName)
-        self.url = url
+    init(track: Track, thumbnail: Data?) {
+        _name = State(initialValue: track.name)
+        self.track = track
         self.thumbnail = thumbnail
     }
 
-    /// The URL is already saved, so `FavoritesStore.add` would silently no-op.
-    private var isDuplicate: Bool { favorites.contains(url: url) }
+    private var isNameTaken: Bool { library.isNameTaken(name, excluding: track.id) }
 
     var body: some View {
         VStack(spacing: 8) {
             Thumbnail(data: thumbnail, size: 64)
             TextField("Name", text: $name).textFieldStyle(.roundedBorder)
-            Text(url).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-            if isDuplicate {
-                Label("Already in Favorites", systemImage: "star.fill")
+            Text(track.url).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            if isNameTaken {
+                Label("A favorite already has this name.", systemImage: "exclamationmark.triangle")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.orange)
             }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Save") {
-                    favorites.add(name: name, url: url, thumbnail: thumbnail); dismiss()
+                    if library.addFavorite(track, name: name) { dismiss() }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(isDuplicate)
+                .disabled(isNameTaken)
             }
         }
         .padding(12)

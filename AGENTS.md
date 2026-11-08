@@ -20,6 +20,7 @@ YouTube audio via `YouTubeKit`.
 ```
 Sources/Airwave/
 ├── AirwaveApp.swift     # @main entry, WindowGroup, menu commands, AppDelegate
+├── Models/              # pure value types (Track, TrackCatalog)
 ├── Services/            # stateful services + persistence
 ├── Utilities/           # small, dependency-free helpers
 ├── Views/               # window + settings screens
@@ -29,9 +30,10 @@ Tests/Smoke/main.swift   # pure-logic smoke checks (run by smoke-test.sh)
 Plugins/BundleApp/       # `swift package bundle` command plugin
 ```
 
-Organize **by layer**, one clear responsibility per file. `Favorite`/
-`RecentTrack` and their stores are intentionally kept separate but similar;
-share code (e.g. `ThumbnailCache`, `UserDefaultsJSON`) rather than merging them.
+Organize **by layer**, one clear responsibility per file. Every track (playing,
+favorite, recent) is one `Track` struct held in `TrackLibrary`; favorites and
+recents are ordered id lists in `TrackCatalog`. Do not reintroduce per-list
+copies of track data.
 
 ## Commands
 
@@ -83,8 +85,11 @@ here. If you change behaviour that is not covered, note it in the PR/commit.
 
 ## Stability to preserve
 
-- **Favorites JSON format** (`FavoritesIO`): exported files must round-trip.
-  Draft favorites with an empty URL are excluded on both export and import.
+- **Favorites JSON format** (`FavoritesIO`): names, links and trims only. No
+  identities, thumbnails or flags; import assigns new identities and suffixes
+  clashing names. Drafts with an empty URL are excluded on export and import.
+- **Identity**: tracks are told apart by `Track.id`, never by link. Several
+  favorites may share a link; favorite names are unique (case/space-insensitive).
 - **UserDefaults keys** live in `Prefs`; don't change their string values.
 - **`StreamResolver.directExtensions`**: only formats `AVPlayer` can actually
   play. `.pls` is deliberately unsupported (AVPlayer cannot resolve PLS).
@@ -94,10 +99,12 @@ here. If you change behaviour that is not covered, note it in the PR/commit.
 - Playback async work is guarded by `PlaybackGeneration`. Any new `await` in the
   playback path must re-check `generation.isCurrent(token)` before touching
   state, and `stop()` must invalidate the generation.
-- Favorites and recents store thumbnails through `ThumbnailCache`, which owns
-  the canonical size. Never store raw/undownscaled image data.
-- `stop()` clears `Prefs.lastURL` so hotstart does not restart a stopped stream.
-  The resume URL is written in `AudioPlayer.start()`.
+- Tracks hold a `thumbnailKey` into `ThumbnailStore` (content-addressed files in
+  Application Support); never store image bytes in the catalog.
+- Trim and custom covers stay on a track after it stops being a favorite but are
+  only editable on favorites (`TrackCatalog` enforces this).
+- `stop()` clears `Prefs.lastTrack` so hotstart does not restart a stopped
+  stream. The track is written in `AudioPlayer.start()`.
 - When a finite item ends, `AudioPlayer` observes
   `AVPlayerItem.didPlayToEndTimeNotification` and either replays it or stops,
   per the `Prefs.replayOnTrackEnd` setting (default: replay). Live streams are

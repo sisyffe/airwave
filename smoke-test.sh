@@ -26,15 +26,13 @@ trap 'rm -rf "$TMP"' EXIT
 swiftc -swift-version 5 \
   Tests/Smoke/main.swift \
   Sources/Airwave/Services/Prefs.swift \
-  Sources/Airwave/Services/Favorites.swift \
+  Sources/Airwave/Models/Track.swift \
+  Sources/Airwave/Models/TrackCatalog.swift \
   Sources/Airwave/Services/FavoritesIO.swift \
-  Sources/Airwave/Services/Recents.swift \
-  Sources/Airwave/Services/ThumbnailCache.swift \
   Sources/Airwave/Services/ICYMetadata.swift \
   Sources/Airwave/Services/PlaybackGeneration.swift \
   Sources/Airwave/Utilities/URLValidation.swift \
   Sources/Airwave/Utilities/UserDefaultsJSON.swift \
-  Sources/Airwave/Utilities/NSImage+Downsizing.swift \
   Sources/Airwave/Utilities/AppInfo.swift \
   -o "$TMP/smoke"
 "$TMP/smoke"

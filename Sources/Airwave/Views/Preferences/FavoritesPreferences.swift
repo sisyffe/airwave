@@ -5,32 +5,21 @@ import UniformTypeIdentifiers
 /// Favorites settings: a reorderable master list with a detail editor, plus
 /// metadata-only JSON import/export.
 struct FavoritesPreferences: View {
-    @EnvironmentObject var favorites: FavoritesStore
-    @State private var selectedFavoriteID: Favorite.ID?
+    @EnvironmentObject var library: TrackLibrary
+    @State private var selectedFavoriteID: Track.ID?
     @State private var message: String?
-
-    private var selectedBinding: Binding<Favorite>? {
-        guard let id = selectedFavoriteID,
-            let index = favorites.items.firstIndex(where: { $0.id == id })
-        else { return nil }
-        let items = $favorites.items
-        return Binding<Favorite>(
-            get: { items.wrappedValue[index] },
-            set: { items.wrappedValue[index] = $0 }
-        )
-    }
 
     var body: some View {
         HSplitView {
             VStack(spacing: 0) {
                 List(selection: $selectedFavoriteID) {
-                    ForEach(favorites.items) { favorite in
+                    ForEach(library.favorites) { favorite in
                         HStack(spacing: 6) {
                             Image(systemName: "line.3.horizontal")
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                                 .help("Drag to reorder")
-                            Thumbnail(data: favorite.thumbnail, size: 20)
+                            Thumbnail(data: ThumbnailStore.data(for: favorite.thumbnailKey), size: 20)
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(favorite.name).lineLimit(1)
                                 if let host = URL(string: favorite.url)?.host {
@@ -41,7 +30,7 @@ struct FavoritesPreferences: View {
                         .tag(favorite.id)
                     }
                     .onMove { indices, newOffset in
-                        favorites.items.move(fromOffsets: indices, toOffset: newOffset)
+                        library.moveFavorites(from: indices, to: newOffset)
                     }
                 }
                 .listStyle(.inset)
@@ -66,7 +55,7 @@ struct FavoritesPreferences: View {
                     Button("Import…") { importFavorites() }
                         .help("Merge favorites from a JSON file")
                     Button("Export…") { exportFavorites() }
-                        .disabled(favorites.items.isEmpty)
+                        .disabled(library.favorites.isEmpty)
                         .help("Save your favorites to a JSON file")
                 }
                 .controlSize(.small)
@@ -75,8 +64,8 @@ struct FavoritesPreferences: View {
             .frame(minWidth: 200, idealWidth: 240)
 
             Group {
-                if let binding = selectedBinding {
-                    FavoriteEditor(favorite: binding)
+                if let id = selectedFavoriteID, library.track(id) != nil {
+                    FavoriteEditor(favoriteID: id).id(id)
                 } else {
                     Text("Select a favorite to edit, or add a new one.")
                         .foregroundStyle(.secondary)
@@ -100,18 +89,14 @@ struct FavoritesPreferences: View {
     }
 
     private func add() {
-        let favorite = Favorite(name: "New Favorite", url: "")
-        favorites.items.append(favorite)
-        selectedFavoriteID = favorite.id
+        selectedFavoriteID = library.addDraft()
     }
 
     private func delete() {
-        guard let id = selectedFavoriteID, let index = favorites.items.firstIndex(where: { $0.id == id }) else { return }
-        favorites.items.remove(at: index)
-        selectedFavoriteID =
-            favorites.items.isEmpty
-            ? nil
-            : favorites.items[min(index, favorites.items.count - 1)].id
+        guard let id = selectedFavoriteID, let index = library.favorites.firstIndex(where: { $0.id == id }) else { return }
+        library.removeFavorite(id)
+        let remaining = library.favorites
+        selectedFavoriteID = remaining.isEmpty ? nil : remaining[min(index, remaining.count - 1)].id
     }
 
     private func exportFavorites() {
@@ -121,8 +106,8 @@ struct FavoritesPreferences: View {
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try FavoritesIO.encode(favorites.items).write(to: url)
-            message = "Exported \(favorites.items.count) favorite(s)."
+            try FavoritesIO.encode(library.favorites).write(to: url)
+            message = "Exported \(library.favorites.filter { !$0.url.isEmpty }.count) favorite(s)."
         } catch {
             message = "Export failed: \(error.localizedDescription)"
         }
@@ -171,34 +156,11 @@ struct FavoritesPreferences: View {
         }
         do {
             let incoming = try FavoritesIO.decode(try Data(contentsOf: url))
-            let existingURLs = Set(favorites.items.map(\.url))
-            let result = FavoritesIO.merge(incoming, into: favorites.items)
-            favorites.items = result.items
-            loadThumbnails(for: result.items.filter { !existingURLs.contains($0.url) })
-            message = result.added > 0 ? "Imported \(result.added) favorite(s)." : "No new favorites to import."
+            let added = library.importFavorites(incoming)
+            library.fetchThumbnails(for: added)
+            message = added.isEmpty ? "No favorites to import." : "Imported \(added.count) favorite(s)."
         } catch {
             message = "Import failed: \(error.localizedDescription)"
-        }
-    }
-
-    private func loadThumbnails(for importedFavorites: [Favorite]) {
-        guard !importedFavorites.isEmpty else { return }
-
-        Task { @MainActor in
-            await withTaskGroup(of: (String, Data?).self) { group in
-                for favorite in importedFavorites {
-                    group.addTask {
-                        let thumbnail = await StreamResolver.thumbnail(for: favorite.url)
-                        return (favorite.url, thumbnail)
-                    }
-                }
-
-                for await (url, thumbnail) in group {
-                    if let thumbnail {
-                        favorites.setThumbnail(thumbnail, for: url)
-                    }
-                }
-            }
         }
     }
 }

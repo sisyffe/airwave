@@ -5,7 +5,7 @@
 ![Platform: macOS 13.0+](https://img.shields.io/badge/platform-macOS%2013.0%2B-blue.svg)
 ![Swift 5.9+](https://img.shields.io/badge/swift-5.9%2B-orange.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
-![Version: 1.1.3](https://img.shields.io/badge/version-1.1.3-informational.svg)
+![Version: 1.1.4](https://img.shields.io/badge/version-1.1.4-informational.svg)
 
 Airwave lets you listen to live internet radio, direct audio streams, and YouTube videos or live broadcasts without keeping a heavy web browser tab open. Designed exclusively for macOS Sonoma and later, it integrates seamlessly with system media controls, the Control Center Now Playing widget, and keyboard shortcuts.
 
@@ -16,12 +16,14 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
 ## Features
 
 - **Hybrid Stream Playback:** Play direct audio stream URLs (`mp3`, `aac`, `m4a`, `m3u8`, etc.) and extract audio-only or HLS live streams from YouTube links automatically.
-- **Favorites Management:** Save your favorite stations and streams, rename them inline, remove them from the row's `…` menu, and reorder them by dragging (both in the main window and in Settings). Import and export your list as a lossless JSON file from Preferences.
+- **Favorites Management:** Save your favorite stations and streams (the same link can be saved several times, each with its own name and trim; names are unique, ignoring case and spaces), rename them inline, remove them from the row's `…` menu, and reorder them by dragging (both in the main window and in Settings). Import and export your list as a JSON file of names, links and trims from Preferences; imports always get new identities, and clashing names get a numeric suffix such as "Jazz 2".
 - **Custom Thumbnails:** In **Settings → Favorites**, give a favorite your own artwork by pasting an image, importing a file, or dragging one onto the thumbnail. The cover is applied everywhere the track appears — Favorites, Recents and the Now Playing card — and is never replaced by automatic artwork fetching. **Reset to default** clears it and re-fetches the automatic artwork.
+- **One Track Model:** The playing track, each favorite and each recent entry are the same `Track` record with a private identity. Saving the playing track as a favorite keeps its identity, so the star and the recent entry update immediately. Recents are kept per track, so one link played with different trims appears as separate entries, and hotstart remembers the last track, not only its link.
+- **Manual Links:** **Settings → Playback → When a known link is entered manually** chooses between *Play the closest matching favorite* (reuse a favorite, else a recent, with that link, preferring one without trim), *Play the exactly matching favorite* (default; reuse a favorite, else a recent, with that link and no trim) and *Always play as a new track, ignoring favorites* (never reuse anything).
 - **Recent History:** A Recents view — switched with Favorites from the bar at the bottom of the main window — remembers your recently played tracks for quick replay, numbered in order (the same numbering appears in the Dock menu's **Recent Tracks** submenu). The history size (1–20, default 5) and a "Clear history" action live in **Settings → Recents**.
 - **Volume Control:** In-app volume slider from 0% to 100% (default 75%), with snap stops every 25%.
 - **ICY "Now Playing" Metadata:** For direct radio streams (Icecast/Shoutcast), Airwave reads inline ICY metadata to show the station name and the current song — in the player card and in macOS Control Center.
-- **Smart Artwork & Metadata Caching:** Automatically fetches and downscales thumbnails from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons. Newly imported favorites use YouTube's video thumbnail when available and load thumbnails once in parallel; covers are also refreshed on every play and persisted alongside your saved favorites and recent tracks.
+- **Smart Artwork & Metadata Caching:** Automatically fetches and downscales thumbnails from YouTube metadata, OpenGraph (`og:image`), Twitter cards (`twitter:image`), or domain favicons. Newly imported favorites use YouTube's video thumbnail when available and load thumbnails once in parallel; covers are also refreshed on every play and stored as content-addressed files in Application Support (`Airwave/Thumbnails`), shared by the whole app; tracks only keep a reference. Unused files are pruned in the background at launch.
 - **Native macOS Integration:**
   - Full support for `MPNowPlayingInfoCenter` (Control Center & Lock Screen artwork and playback state) and `MPRemoteCommandCenter` (hardware media keys).
   - Live network status indicator (`Connected`, `Weak connection`, `No network`) with an immediate, color-coded hover label, plus a quick Preferences button embedded directly in the window titlebar.
@@ -128,7 +130,7 @@ The app version is single-sourced from `VERSION`: the plugin writes it into `Inf
 
 ### Testing
 
-There is no XCTest/Swift Testing target because those require a full Xcode install; the project is built with the Command Line Tools only. Instead, `smoke-test.sh` builds the app, runs `swift format lint`, and compiles a small harness (`Tests/Smoke/main.swift`) against the Foundation-only logic — preferences, favorites import/export, the playback generation gate and ICY metadata parsing — asserting its behaviour:
+There is no XCTest/Swift Testing target because those require a full Xcode install; the project is built with the Command Line Tools only. Instead, `smoke-test.sh` builds the app, runs `swift format lint`, and compiles a small harness (`Tests/Smoke/main.swift`) against the Foundation-only logic — preferences, the track catalog (names, link resolution, recents, import) and favorites export, the playback generation gate and ICY metadata parsing — asserting its behaviour:
 
 ```bash
 ./smoke-test.sh
@@ -149,13 +151,15 @@ Sources/Airwave/
 │   ├── AudioPlayer.swift          # @MainActor AVPlayer wrapper, generation-safe async loading & MediaPlayer integration
 │   ├── StreamResolver.swift       # Direct stream vs. YouTubeKit extraction & OpenGraph/favicon artwork fetching
 │   ├── ICYMetadata.swift          # Icecast/Shoutcast inline metadata reader (station name & current song)
-│   ├── ThumbnailCache.swift       # Canonical, shared thumbnail downscaling for favorites & recents
+│   ├── ThumbnailStore.swift       # Content-addressed thumbnail files in Application Support
+│   ├── TrackLibrary.swift         # Single observable store of all tracks (favorites & recents are id lists)
 │   ├── ConnectionMonitor.swift    # NWPathMonitor wrapper publishing connection quality
 │   ├── PlaybackGeneration.swift   # Token gate that discards stale/superseded async playback work
-│   ├── Favorites.swift            # Codable Favorite model & UserDefaults-backed FavoritesStore
-│   ├── FavoritesIO.swift          # Metadata-only JSON export, import & merge for favorites
-│   ├── Recents.swift              # UserDefaults-backed RecentsStore (configurable 1–20 history)
+│   ├── FavoritesIO.swift          # JSON export & import of names, links and trims
 │   └── Prefs.swift                # Centralized UserDefaults keys & defaults
+├── Models/                        # Pure value types
+│   ├── Track.swift                # The one track struct
+│   └── TrackCatalog.swift         # Tracks, favorites/recents order, name rules, link resolution, import
 ├── Utilities/                     # Small, dependency-free helpers
 │   ├── AppInfo.swift              # App name & bundle version (read from Info.plist)
 │   ├── NSImage+Downsizing.swift   # PNG downscaling used by thumbnails
@@ -187,8 +191,8 @@ Sources/Airwave/
   2. For YouTube URLs, queries `YouTubeKit` locally and selects the best stream in priority order: **HLS live stream** → **highest-bitrate M4A audio-only stream** → **lowest-resolution natively playable muxed stream**.
   3. Fetches artwork asynchronously (up to 300 KB of HTML inspected for `og:image` / `twitter:image` meta tags, falling back to Google's S2 favicon service) and downscales images to 256 px PNG data for compact storage.
 - **ICY Metadata Reader (`ICYMetadata`):** For direct radio streams, a second, audio-less connection parses inline `icy-metaint` blocks to surface the station name and current song without touching the playback pipeline; the task is generation-guarded and cancelled on stop or track change.
-- **Shared Thumbnails (`ThumbnailCache`):** Favorites and recents keep their own `thumbnail` field in local persistence, but exported favorites JSON contains only the favorite ID, name, and URL. Every image is downscaled through one shared cache, so both lists store identical bytes for the same link instead of each picking its own size.
-- **Lightweight Persistence (`FavoritesStore`, `RecentsStore`, `UserDefaultsJSON` & `Prefs`):** Favorites, recent history, and cached thumbnail `Data` are serialized as JSON in `UserDefaults` via a small shared helper, keeping the app completely self-contained with zero external database dependencies.
+- **Shared Thumbnails (`ThumbnailStore`):** Every image is downscaled and written once under the SHA-256 of its bytes; tracks store only that key. Exported favorites contain names, links and trims only.
+- **Lightweight Persistence (`TrackLibrary`, `UserDefaultsJSON` & `Prefs`):** The track catalog (no image bytes) is serialized as JSON in `UserDefaults` via a small shared helper, keeping the app completely self-contained with zero external database dependencies.
 
 ---
 

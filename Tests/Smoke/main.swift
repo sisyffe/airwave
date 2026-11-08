@@ -70,80 +70,111 @@ do {
     check(!Prefs.defaultShowExtraSeekControls, "extra seek controls default to off")
 }
 
+// MARK: Track catalog
+
+do {
+    var catalog = TrackCatalog()
+    check(TrackCatalog.nameKey("  Jazz ") == TrackCatalog.nameKey("jazz"), "name keys ignore case and spaces")
+    check(TrackCatalog.nameKey("Jazz  Night") == TrackCatalog.nameKey("jazz night"), "name keys collapse inner spaces")
+
+    let first = Track(name: "Jazz", url: "https://example.com/a.mp3")
+    check(catalog.addFavorite(first, name: "Jazz"), "a favorite can be added")
+    let clash = Track(name: "x", url: "https://example.com/a.mp3")
+    check(!catalog.addFavorite(clash, name: " jazz "), "a taken name is rejected, case and spaces ignored")
+    check(catalog.addFavorite(clash, name: "Jazz B"), "the same link can be saved again under another name")
+    check(catalog.favorites.count == 2, "two favorites share a link")
+    check(catalog.favorites[0].id == first.id, "a favorite keeps the identity of the saved track")
+
+    check(!catalog.renameFavorite(clash.id, to: "JAZZ"), "renaming to a taken name is rejected")
+    check(catalog.renameFavorite(clash.id, to: "Jazz C"), "renaming to a free name works")
+
+    let draft = catalog.addDraft()
+    let draft2 = catalog.addDraft()
+    check(catalog.tracks[draft]?.name == "New Favorite", "first draft is named New Favorite")
+    check(catalog.tracks[draft2]?.name == "New Favorite 2", "second draft gets a numeric suffix")
+
+    // Trim persists after unfavoriting, and is read-only on non-favorites.
+    var trimmed = TrackCatalog()
+    let song = Track(name: "Song", url: "https://example.com/s.mp3")
+    trimmed.addFavorite(song, name: "Song")
+    trimmed.setTrim(song.id, start: 30, end: 60)
+    trimmed.removeFavorite(song.id)
+    check(trimmed.tracks[song.id] == nil, "an unfavorited track outside recents is forgotten")
+    trimmed.recordPlayback(song)
+    trimmed.addFavorite(song, name: "Song")
+    trimmed.setTrim(song.id, start: 30, end: 60)
+    trimmed.removeFavorite(song.id)
+    check(trimmed.tracks[song.id]?.startOffset == 30, "trim survives unfavoriting while in recents")
+    trimmed.setTrim(song.id, start: 5, end: 5)
+    check(trimmed.tracks[song.id]?.startOffset == 30, "trim is not editable on a non-favorite")
+    trimmed.addFavorite(song, name: "Song")
+    check(trimmed.tracks[song.id]?.endOffset == 60, "re-favoriting restores the trim")
+
+    // Recents
+    var recents = TrackCatalog()
+    recents.recentLimit = 2
+    let one = Track(name: "1", url: "https://example.com/1.mp3")
+    let two = Track(name: "2", url: "https://example.com/2.mp3")
+    let three = Track(name: "3", url: "https://example.com/3.mp3")
+    for track in [one, two, three] { recents.recordPlayback(track) }
+    check(recents.recentOrder == [three.id, two.id], "recents are capped, newest first")
+    check(recents.tracks[one.id] == nil, "an evicted non-favorite is dropped")
+    recents.recordPlayback(two)
+    check(recents.recentOrder == [two.id, three.id], "replaying moves a track to the front")
+
+    // Resolution of links typed by hand
+    var library = TrackCatalog()
+    let plain = Track(name: "Plain", url: "https://example.com/p.mp3")
+    var trimmedFavorite = Track(name: "Trimmed", url: "https://example.com/p.mp3")
+    trimmedFavorite.startOffset = 10
+    library.addFavorite(trimmedFavorite, name: "Trimmed")
+    library.setTrim(trimmedFavorite.id, start: 10, end: nil)
+    let link = "https://example.com/p.mp3"
+    check(
+        library.resolve(url: link, mode: .matchesClosest).id == trimmedFavorite.id,
+        "closest: a trimmed favorite plays when it is the only match")
+    check(library.resolve(url: link, mode: .exactlyMatches).id != trimmedFavorite.id, "exact: a trimmed favorite is not reused")
+    library.addFavorite(plain, name: "Plain")
+    check(library.resolve(url: link, mode: .matchesClosest).id == plain.id, "closest: prefers the favorite without trim")
+    check(library.resolve(url: link, mode: .exactlyMatches).id == plain.id, "exact: reuses the favorite without trim")
+    check(library.resolve(url: link, mode: .alwaysNew).id != plain.id, "always new: ignores favorites")
+    library.recordPlayback(plain)
+    library.removeFavorite(plain.id)
+    check(library.resolve(url: link, mode: .alwaysNew).id != plain.id, "always new: ignores recents too")
+    check(
+        library.tracks[library.resolve(url: "https://example.com/new.mp3", mode: .matchesClosest).id] == nil,
+        "unknown links become new tracks")
+
+    // Import
+    var target = TrackCatalog()
+    target.addFavorite(Track(name: "Jazz", url: "https://example.com/j.mp3"), name: "Jazz")
+    let incoming = [
+        Track(name: "Jazz", url: "https://example.com/a.mp3"),
+        Track(name: "jazz", url: "https://example.com/b.mp3"),
+        Track(name: "Empty", url: ""),
+    ]
+    let added = target.importFavorites(incoming)
+    check(added.count == 2, "import skips empty links")
+    check(
+        target.favorites.map(\.name) == ["Jazz", "Jazz 2", "jazz 3"],
+        "import suffixes clashing names")
+    check(Set(target.favorites.map(\.id)).count == 3, "imported favorites get new identities")
+}
+
 // MARK: FavoritesIO
 
 do {
-    let items = [
-        Favorite(name: "Station One", url: "https://example.com/one.mp3", thumbnail: Data([1, 2, 3])),
-        Favorite(name: "Station Two", url: "https://example.com/two.m3u8", thumbnail: nil)
-    ]
-
-    let encoded = try! FavoritesIO.encode(items)
+    var favorite = Track(name: "Trimmed", url: "https://example.com/t.mp3")
+    favorite.startOffset = 30
+    favorite.endOffset = 90
+    let draft = Track(name: "Draft", url: "")
+    let encoded = try! FavoritesIO.encode([favorite, draft])
     let json = try! JSONSerialization.jsonObject(with: encoded) as! [[String: Any]]
-    check(
-        json.allSatisfy { Set($0.keys) == Set(["id", "name", "url"]) },
-        "export includes only favorite id, name, and URL"
-    )
-
+    check(json.count == 1, "export skips empty-URL drafts")
+    check(Set(json[0].keys) == Set(["name", "url", "startOffset", "endOffset"]), "export holds names, links and trims only")
     let decoded = try! FavoritesIO.decode(encoded)
-    let metadataRoundTrips = decoded.count == items.count
-        && zip(decoded, items).allSatisfy { exported, original in
-            exported.id == original.id && exported.name == original.name && exported.url == original.url
-        }
-    check(
-        metadataRoundTrips,
-        "export/import preserves favorite metadata"
-    )
-    check(decoded.allSatisfy { $0.thumbnail == nil }, "imported favorites have no exported thumbnail")
-
-    let incoming = [
-        Favorite(name: "Duplicate", url: "https://example.com/one.mp3"),
-        Favorite(name: "New", url: "https://example.com/three.aac"),
-        Favorite(name: "Empty", url: "")
-    ]
-    let merged = FavoritesIO.merge(incoming, into: items)
-    check(merged.added == 1, "merge counts only new, non-empty URLs")
-    check(
-        merged.items.map(\.url) == [
-            "https://example.com/one.mp3",
-            "https://example.com/two.m3u8",
-            "https://example.com/three.aac"
-        ],
-        "merge preserves existing order and appends new entries"
-    )
-
-    let exported = try! FavoritesIO.decode(FavoritesIO.encode(items + [Favorite(name: "Draft", url: "")]))
-    check(exported.map(\.url) == items.map(\.url), "export skips empty-URL drafts (symmetric with import)")
-
-    // Favorites stored by older versions (and exported files) have no
-    // `hasCustomThumbnail` key; they must still decode rather than wipe the list.
-    let legacyJSON = Data(
-        #"[{"id":"8A9F1D2E-0000-4000-8000-000000000000","name":"Old","url":"https://example.com/old.mp3"}]"#.utf8)
-    let legacy = try! FavoritesIO.decode(legacyJSON)
-    check(legacy.count == 1, "legacy favorites JSON decodes")
-    check(legacy.first?.hasCustomThumbnail == nil, "a missing custom-thumbnail flag decodes as nil")
-    check(
-        legacy.first?.startOffset == nil && legacy.first?.endOffset == nil,
-        "missing trim offsets decode as nil"
-    )
-    check(legacy.first?.isFinite == nil, "a missing finiteness flag decodes as nil")
-
-    let trimmed = Favorite(name: "Trimmed", url: "https://example.com/t.mp3", startOffset: 30, endOffset: 90)
-    let roundTrip = try! FavoritesIO.decode(FavoritesIO.encode([trimmed]))
-    check(
-        roundTrip.first?.startOffset == 30 && roundTrip.first?.endOffset == 90,
-        "trim offsets round-trip through export/import"
-    )
-}
-
-// MARK: RecentTrack
-
-do {
-    let legacyJSON = Data(
-        #"[{"id":"8A9F1D2E-0000-4000-8000-000000000000","name":"Old","url":"https://example.com/old.mp3"}]"#.utf8)
-    let decoded = try! JSONDecoder().decode([RecentTrack].self, from: legacyJSON)
-    check(decoded.count == 1, "legacy recent JSON decodes")
-    check(decoded.first?.hasCustomThumbnail == nil, "a missing recent custom-thumbnail flag decodes as nil")
+    check(decoded.first?.startOffset == 30 && decoded.first?.endOffset == 90, "trims round-trip")
+    check(decoded.first?.id != favorite.id, "import gives a new identity")
 }
 
 // MARK: PlaybackGeneration

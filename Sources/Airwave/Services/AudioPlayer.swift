@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import MediaPlayer
 import AppKit
+import Combine
 
 /// AVPlayer wrapper that publishes state and integrates with macOS Now Playing
 /// (Control Center, media keys, AirPods, Touch Bar, lock screen).
@@ -12,9 +13,9 @@ final class AudioPlayer: ObservableObject {
     enum State: Equatable { case idle, loading, playing, paused }
 
     @Published private(set) var state: State = .idle
-    @Published private(set) var title: String = ""
-    @Published private(set) var sourceURL: String = ""
-    /// Thumbnail of the current link (PNG/JPEG data), if one could be fetched.
+    /// The track being played; its identity is shared with favorites and recents.
+    @Published private(set) var track: Track?
+    /// Thumbnail of the current track (PNG data from `ThumbnailStore`), if any.
     @Published private(set) var artwork: Data?
     /// Current song reported by ICY metadata for direct radio streams (nil = none).
     @Published private(set) var streamTitle: String?
@@ -26,15 +27,16 @@ final class AudioPlayer: ObservableObject {
         didSet { player.volume = volume; UserDefaults.standard.set(volume, forKey: Prefs.volume) }
     }
 
+    var title: String { track?.name ?? "" }
+    var sourceURL: String { track?.url ?? "" }
+
     private(set) var hasStarted = false
+    private var librarySync: AnyCancellable?
     private let player = AVPlayer()
     private var statusObservation: NSKeyValueObservation?
     private var rateObservation: NSKeyValueObservation?
     /// Tracks the current item's duration so `isLive` stays accurate.
     private var durationObservation: NSKeyValueObservation?
-    /// True when `artwork` was supplied by the user, so automatic fetching must
-    /// not replace it on the Now Playing card.
-    private var artworkIsCustom = false
     /// Trim offsets for the current favorite, applied once the item is known to
     /// be finite: `trimStartOffset` from the start, `trimEndOffset` back from the
     /// end. Nil means no trim.
@@ -59,6 +61,9 @@ final class AudioPlayer: ObservableObject {
         player.volume = volume
         player.automaticallyWaitsToMinimizeStalling = true
         setupRemoteCommands()
+        librarySync = TrackLibrary.shared.$catalog.sink { [weak self] catalog in
+            Task { @MainActor in self?.adoptStoredCopy(from: catalog) }
+        }
         rateObservation = player.observe(\.timeControlStatus) { [weak self] player, _ in
             Task { @MainActor in self?.syncState(player.timeControlStatus) }
         }
@@ -66,41 +71,49 @@ final class AudioPlayer: ObservableObject {
 
     // MARK: Playback
 
-    /// What was playing before a new link was submitted, so it can be restored
-    /// when the new link fails to load.
+    /// What was playing before a new track was requested, so it can be restored
+    /// when the new one fails to load.
     private struct Snapshot {
-        let url: String
-        let title: String
+        let track: Track?
         let artwork: Data?
-        let artworkIsCustom: Bool
         let item: AVPlayerItem?
         let wasPlaying: Bool
         let trimStartOffset: TimeInterval?
         let trimEndOffset: TimeInterval?
     }
 
-    func play(urlString: String, title: String? = nil, artwork knownArtwork: Data? = nil, customArtwork: Bool = false) async {
+    /// Plays a track by id from the library; alerts when it no longer exists.
+    func play(id: UUID) async {
+        guard let stored = TrackLibrary.shared.track(id) else {
+            lastError = "That track is no longer in your library."
+            return
+        }
+        await play(stored)
+    }
+
+    func play(_ requested: Track) async {
         hasStarted = true
         lastError = nil
         let playGeneration = generation.begin()
         let previous = Snapshot(
-            url: sourceURL, title: self.title, artwork: artwork, artworkIsCustom: artworkIsCustom,
-            item: player.currentItem, wasPlaying: isPlaying, trimStartOffset: trimStartOffset,
-            trimEndOffset: trimEndOffset)
-        artworkIsCustom = customArtwork
-        // A favorite may define a trim range; it applies wherever the URL plays.
-        let favorite = FavoritesStore.shared.favorite(for: urlString)
-        trimStartOffset = favorite?.startOffset
-        trimEndOffset = favorite?.endOffset
+            track: track, artwork: artwork, item: player.currentItem, wasPlaying: isPlaying,
+            trimStartOffset: trimStartOffset, trimEndOffset: trimEndOffset)
+        // The library copy wins so trim and cover edits are always honored.
+        let target = TrackLibrary.shared.track(requested.id) ?? requested
+        trimStartOffset = target.startOffset
+        trimEndOffset = target.endOffset
         trimApplied = false
         removeTrimEndObserver()
-        beginLoading(urlString: urlString, title: title, artwork: knownArtwork)
+        beginLoading(target)
         do {
-            let resolved = try await StreamResolver.resolve(urlString)
+            let resolved = try await StreamResolver.resolve(target.url)
             guard generation.isCurrent(playGeneration) else { return }  // user switched or stopped
-            if title == nil, let resolvedTitle = resolved.title { self.title = resolvedTitle }
-            start(resolved, urlString: urlString, previous: previous, playGeneration: playGeneration)
-            await refreshArtwork(resolved, page: urlString, playGeneration: playGeneration)
+            var playing = track ?? target
+            playing.isDirect = resolved.isDirect
+            if playing.name == playing.url, let resolvedTitle = resolved.title { playing.name = resolvedTitle }
+            track = playing
+            start(resolved, previous: previous, playGeneration: playGeneration)
+            await refreshArtwork(resolved, playGeneration: playGeneration)
         } catch {
             guard generation.isCurrent(playGeneration) else { return }  // a newer link owns the UI
             restore(previous)  // keep whatever was playing…
@@ -108,8 +121,8 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    /// Resets published state for a new link before its stream is resolved.
-    private func beginLoading(urlString: String, title: String?, artwork knownArtwork: Data?) {
+    /// Resets published state for a new track before its stream is resolved.
+    private func beginLoading(_ target: Track) {
         state = .loading
         streamTitle = nil
         isLive = true
@@ -117,14 +130,13 @@ final class AudioPlayer: ObservableObject {
         icyTask = nil
         removeEndOfTrackObserver()
         removeDurationObserver()
-        sourceURL = urlString
-        self.title = title ?? urlString
-        artwork = knownArtwork
+        track = target
+        artwork = ThumbnailStore.data(for: target.thumbnailKey)
         updateNowPlaying()
     }
 
     /// Swaps in the resolved stream, starts playback and wires up failure handling.
-    private func start(_ resolved: StreamResolver.Resolved, urlString: String, previous: Snapshot, playGeneration: Int) {
+    private func start(_ resolved: StreamResolver.Resolved, previous: Snapshot, playGeneration: Int) {
         let item = makePlayerItem(for: resolved)
         statusObservation = item.observe(\.status) { [weak self] item, _ in
             Task { @MainActor in
@@ -132,12 +144,14 @@ final class AudioPlayer: ObservableObject {
                 self.itemFailed(item, previous: previous)
             }
         }
+        if let track {
+            TrackLibrary.shared.recordPlayback(track)
+            UserDefaultsJSON.save(track, to: Prefs.lastTrack)
+        }
         observeEndOfTrack(of: item)
         player.replaceCurrentItem(with: item)
         observeDuration(of: item)
         player.play()
-        UserDefaults.standard.set(urlString, forKey: Prefs.lastURL)
-        RecentsStore.shared.record(name: self.title, url: urlString, thumbnail: artwork, custom: artworkIsCustom)
         updateNowPlaying()
         startICYIfEligible(resolved, playGeneration: playGeneration)
     }
@@ -149,24 +163,22 @@ final class AudioPlayer: ObservableObject {
         return AVPlayerItem(asset: AVURLAsset(url: resolved.streamURL, options: options))
     }
 
-    /// Refreshes the artwork even when a cached one was supplied (from
-    /// favorites/recents), so covers stay up to date on every play.
-    private func refreshArtwork(_ resolved: StreamResolver.Resolved, page: String, playGeneration: Int) async {
-        guard !artworkIsCustom else { return }  // keep the user's cover
-        let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: page)
-        if generation.isCurrent(playGeneration), let fetched, fetched != artwork {
-            artwork = fetched
-            updateNowPlaying()
-            NotificationCenter.default.post(name: .airwaveArtwork, object: page, userInfo: ["data": fetched])
-        }
+    /// Refreshes the automatic artwork on every play, for every non-custom track
+    /// sharing the link. Custom covers are never replaced.
+    private func refreshArtwork(_ resolved: StreamResolver.Resolved, playGeneration: Int) async {
+        guard let current = track, !current.hasCustomThumbnail else { return }
+        let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: current.url)
+        guard generation.isCurrent(playGeneration), let fetched, let key = ThumbnailStore.save(fetched) else { return }
+        TrackLibrary.shared.applyThumbnail(key, forURL: current.url)
     }
 
-    /// Replaces the artwork of the currently playing track (used when a custom
-    /// thumbnail is set or reset from Settings). No-op for other URLs.
-    func applyArtwork(_ data: Data?, for url: String, custom: Bool) {
-        guard url == sourceURL else { return }
-        artwork = data
-        artworkIsCustom = custom
+    /// Mirrors the library's copy of the playing track (rename, cover, finiteness).
+    /// Trim already applied to the running item is left alone until the next play.
+    private func adoptStoredCopy(from catalog: TrackCatalog) {
+        guard let current = track, let stored = catalog.tracks[current.id], stored != current else { return }
+        let keyChanged = stored.thumbnailKey != current.thumbnailKey
+        track = stored
+        if keyChanged { artwork = ThumbnailStore.data(for: stored.thumbnailKey) }
         updateNowPlaying()
     }
 
@@ -192,19 +204,20 @@ final class AudioPlayer: ObservableObject {
                 item.seek(to: .positiveInfinity, completionHandler: nil)  // back to the live edge
             }
         }
-        // Set the URL first so the duration observer records finiteness for the
+        // Set the track first so the duration observer records finiteness for the
         // restored track, not the one that just failed.
-        sourceURL = snapshot.url
+        track = snapshot.track
         if let item = snapshot.item {
             observeDuration(of: item)
             observeEndOfTrack(of: item)
         }
         if snapshot.wasPlaying, snapshot.item != nil { player.play() }
-        title = snapshot.title
         artwork = snapshot.artwork
-        artworkIsCustom = snapshot.artworkIsCustom
         isLive = snapshot.item?.duration.isIndefinite ?? true
         state = snapshot.item == nil ? .idle : (snapshot.wasPlaying ? .playing : .paused)
+        if let track = snapshot.track {
+            UserDefaultsJSON.save(track, to: Prefs.lastTrack)
+        }
         updateNowPlaying()
     }
 
@@ -226,8 +239,11 @@ final class AudioPlayer: ObservableObject {
         isLive = item.duration.isIndefinite
         if !isLive {
             applyTrimIfNeeded(item)
-            // Learn that this URL is a finite track, so its favorite can offer trim.
-            FavoritesStore.shared.setFinite(true, for: sourceURL)
+            // Learn that this track is finite, so its favorite can offer trim.
+            if let id = track?.id {
+                track?.isFinite = true
+                TrackLibrary.shared.setFinite(id, true)
+            }
         }
     }
 
@@ -304,9 +320,7 @@ final class AudioPlayer: ObservableObject {
 
     func resume() {
         guard player.currentItem != nil else {
-            if !sourceURL.isEmpty {
-                Task { await play(urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom) }
-            }
+            if let track { Task { await play(track) } }
             return
         }
         // For live streams, jump back to the live edge after a pause.
@@ -335,8 +349,8 @@ final class AudioPlayer: ObservableObject {
     /// Re-resolve and reload the current source (fresh stream URL), keeping the
     /// existing title and artwork so the UI does not flicker.
     func refresh() {
-        guard !sourceURL.isEmpty else { return }
-        Task { await play(urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom) }
+        guard let track else { return }
+        Task { await play(track) }
     }
 
     func stop() {
@@ -355,13 +369,11 @@ final class AudioPlayer: ObservableObject {
         icyTask = nil
         streamTitle = nil
         isLive = true
-        artworkIsCustom = false
-        sourceURL = ""
-        title = ""
+        track = nil
         artwork = nil
         state = .idle
         // Forget the resume URL so hotstart does not restart a stopped stream.
-        UserDefaults.standard.removeObject(forKey: Prefs.lastURL)
+        UserDefaults.standard.removeObject(forKey: Prefs.lastTrack)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
     }
@@ -374,9 +386,8 @@ final class AudioPlayer: ObservableObject {
         icyTask = Task { [weak self] in
             for await info in ICYMetadata.stream(from: url) {
                 guard let self, self.generation.isCurrent(playGeneration) else { return }
-                if let station = info.station, self.title == self.sourceURL {
-                    self.title = station
-                    RecentsStore.shared.record(name: station, url: self.sourceURL, thumbnail: self.artwork, custom: self.artworkIsCustom)
+                if let station = info.station, let id = self.track?.id {
+                    TrackLibrary.shared.adoptStationName(id, station)
                 }
                 self.streamTitle = info.song
                 self.updateNowPlaying()
@@ -434,9 +445,4 @@ final class AudioPlayer: ObservableObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = playing ? .playing : (state == .idle ? .stopped : .paused)
     }
-}
-
-extension Notification.Name {
-    /// Posted when a thumbnail is fetched for a URL (object: url String, userInfo["data"]: Data).
-    static let airwaveArtwork = Notification.Name("airwaveArtwork")
 }

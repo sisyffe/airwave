@@ -1,46 +1,35 @@
 import Foundation
 
-/// Import/export for the favorites list. Exported JSON contains favorite
-/// metadata only; thumbnails remain local to the app.
-///
-/// Draft favorites with an empty URL are excluded from both export and import,
-/// so a file always contains only complete favorites.
+/// Import/export for the favorites list. Files hold names, links and trims
+/// only: no identities, thumbnails or flags. Drafts with an empty link are
+/// excluded on both export and import.
 enum FavoritesIO {
-    static func encode(_ items: [Favorite]) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let exportItems =
-            items
-            .filter { !$0.url.isEmpty }
-            .map {
-                ExportedFavorite(
-                    id: $0.id, name: $0.name, url: $0.url, startOffset: $0.startOffset, endOffset: $0.endOffset)
-            }
-        return try encoder.encode(exportItems)
-    }
-
-    static func decode(_ data: Data) throws -> [Favorite] {
-        try JSONDecoder().decode([Favorite].self, from: data)
-    }
-
-    /// Merges imported favorites into the existing list, skipping URLs that are
-    /// already present. Returns the merged list and how many were added.
-    static func merge(_ incoming: [Favorite], into existing: [Favorite]) -> (items: [Favorite], added: Int) {
-        var merged = existing
-        var added = 0
-        for favorite in incoming where !favorite.url.isEmpty && !merged.contains(where: { $0.url == favorite.url }) {
-            merged.append(favorite)
-            added += 1
-        }
-        return (merged, added)
-    }
-
-    private struct ExportedFavorite: Encodable {
-        let id: UUID
+    private struct Entry: Codable {
         let name: String
         let url: String
-        /// Optional trim offsets; omitted from the JSON when unset.
         let startOffset: TimeInterval?
         let endOffset: TimeInterval?
+    }
+
+    static func encode(_ favorites: [Track]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let entries =
+            favorites
+            .filter { !$0.url.isEmpty }
+            .map { Entry(name: $0.name, url: $0.url, startOffset: $0.startOffset, endOffset: $0.endOffset) }
+        return try encoder.encode(entries)
+    }
+
+    /// Decodes into tracks with brand-new identities.
+    static func decode(_ data: Data) throws -> [Track] {
+        try JSONDecoder().decode([Entry].self, from: data)
+            .filter { !$0.url.isEmpty }
+            .map {
+                var track = Track(name: $0.name, url: $0.url)
+                track.startOffset = $0.startOffset
+                track.endOffset = $0.endOffset
+                return track
+            }
     }
 }

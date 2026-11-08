@@ -5,10 +5,8 @@ import AppKit
 struct AirwaveApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var player = AudioPlayer.shared
-    @StateObject private var favorites = FavoritesStore.shared
-    @StateObject private var recents = RecentsStore.shared
+    @StateObject private var library = TrackLibrary.shared
     @AppStorage(Prefs.hotstart) private var hotstart = true
-    @AppStorage(Prefs.lastURL) private var lastURL = ""
 
     init() {
         // Needed when launched via `swift run` (no bundle Info.plist).
@@ -19,16 +17,9 @@ struct AirwaveApp: App {
         WindowGroup("Airwave", id: "main") {
             ContentView()
                 .environmentObject(player)
-                .environmentObject(favorites)
-                .environmentObject(recents)
+                .environmentObject(library)
                 .frame(minWidth: 240, idealWidth: 260, minHeight: 380, idealHeight: 460)
-                .onReceive(NotificationCenter.default.publisher(for: .airwaveArtwork)) { notification in
-                    if let url = notification.object as? String, let data = notification.userInfo?["data"] as? Data {
-                        favorites.setThumbnail(data, for: url)
-                        recents.setThumbnail(data, for: url)
-                    }
-                }
-                .task { runHotstart() }
+                .task { await launch() }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 260, height: 460)
@@ -64,20 +55,20 @@ struct AirwaveApp: App {
 
         Settings {
             PreferencesView()
-                .environmentObject(favorites)
-                .environmentObject(recents)
+                .environmentObject(library)
                 .environmentObject(player)
         }
     }
 
-    private func runHotstart() {
-        guard hotstart, !AudioPlayer.shared.hasStarted, !lastURL.isEmpty else { return }
-        let favorite = favorites.favorite(for: lastURL)
-        Task {
-            await AudioPlayer.shared.play(
-                urlString: lastURL, title: favorite?.name, artwork: favorite?.thumbnail,
-                customArtwork: favorite?.hasCustomThumbnail == true)
-        }
+    /// Prunes unused thumbnails off the main thread, then runs hotstart.
+    private func launch() async {
+        let keep = library.keptThumbnailKeys
+        let cutoff = Date()
+        Task.detached(priority: .utility) { ThumbnailStore.prune(keeping: keep, modifiedBefore: cutoff) }
+        guard hotstart, !AudioPlayer.shared.hasStarted,
+            let last = UserDefaultsJSON.load(Track.self, from: Prefs.lastTrack)
+        else { return }
+        await AudioPlayer.shared.play(library.track(last.id) ?? last)
     }
 }
 
@@ -101,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let recentsItem = NSMenuItem(title: "Recent Tracks", action: nil, keyEquivalent: "")
         let recentsMenu = NSMenu()
-        let recents = RecentsStore.shared.items
+        let recents = TrackLibrary.shared.recents
         if recents.isEmpty {
             let empty = NSMenuItem(title: "No Recent Tracks", action: nil, keyEquivalent: "")
             empty.isEnabled = false
@@ -111,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let item = NSMenuItem(
                     title: "\(index + 1). \(track.name)", action: #selector(dockPlayRecent(_:)), keyEquivalent: "")
                 item.target = self
-                item.representedObject = track.url
+                item.representedObject = track.id
                 item.toolTip = track.url
                 recentsMenu.addItem(item)
             }
@@ -133,12 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func dockPlayRecent(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? String else { return }
-        let title = sender.title
-        Task { @MainActor in
-            let isCustom = RecentsStore.shared.items.first { $0.url == url }?.hasCustomThumbnail == true
-            await AudioPlayer.shared.play(urlString: url, title: title, customArtwork: isCustom)
-        }
+        guard let id = sender.representedObject as? UUID else { return }
+        Task { @MainActor in await AudioPlayer.shared.play(id: id) }
     }
 
     @MainActor
