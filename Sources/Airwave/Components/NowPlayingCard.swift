@@ -8,8 +8,7 @@ struct NowPlayingCard: View {
     @State private var isAdjustingVolume = false
     @State private var showOptions = false
 
-    private var currentFavorite: Favorite? { favorites.favorite(id: player.trackID) }
-    private var isFavorite: Bool { currentFavorite != nil }
+    private var isFavorite: Bool { favorites.contains(url: player.sourceURL) }
     private var volumePercentage: Int { Int((player.volume * 100).rounded()) }
 
     /// Square box shared by the favorite star and the options arrow so the two
@@ -41,7 +40,7 @@ struct NowPlayingCard: View {
     var body: some View {
         VStack(spacing: 6) {
             statusLine.font(.caption2)
-            Thumbnail(key: player.artworkKey, size: 120)
+            Thumbnail(data: player.artwork, size: 120)
             Text(player.title.isEmpty ? "Nothing playing" : player.title)
                 .font(.callout.weight(.semibold))
                 .lineLimit(2).multilineTextAlignment(.center)
@@ -121,21 +120,19 @@ struct NowPlayingCard: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
         .overlay(alignment: .topLeading) { favoriteButton.padding(6) }
         .overlay(alignment: .topTrailing) { optionsButton.padding(6) }
-        .onReceive(NotificationCenter.default.publisher(for: .airwaveToggleFavorite)) { _ in
-            guard !player.sourceURL.isEmpty else { return }
-            if isFavorite { showRemoveConfirm = true } else { showAddFavorite = true }
-        }
         .confirmationDialog(
             "Remove from favorites?",
             isPresented: $showRemoveConfirm,
             titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) {
-                if let currentFavorite { favorites.remove(currentFavorite) }
+                if let favorite = favorites.favorite(for: player.sourceURL) {
+                    favorites.remove(favorite)
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("“\(currentFavorite?.name ?? player.title)” will be removed from your favorites.")
+            Text("“\(favorites.favorite(for: player.sourceURL)?.name ?? player.title)” will be removed from your favorites.")
         }
     }
 

@@ -6,7 +6,6 @@ import UniformTypeIdentifiers
 /// metadata-only JSON import/export.
 struct FavoritesPreferences: View {
     @EnvironmentObject var favorites: FavoritesStore
-    @ObservedObject private var router = SettingsRouter.shared
     @State private var selectedFavoriteID: Favorite.ID?
     @State private var message: String?
 
@@ -31,7 +30,7 @@ struct FavoritesPreferences: View {
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                                 .help("Drag to reorder")
-                            Thumbnail(key: favorite.thumbnailKey, size: 20)
+                            Thumbnail(data: favorite.thumbnail, size: 20)
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(favorite.name).lineLimit(1)
                                 if let host = URL(string: favorite.url)?.host {
@@ -49,35 +48,26 @@ struct FavoritesPreferences: View {
 
                 Divider()
 
-                HStack(alignment: .center, spacing: 8) {
-                    VStack(spacing: 4) {
-                        Button {
-                            add()
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .help("Add a new favorite")
-                        Button {
-                            delete()
-                        } label: {
-                            Image(systemName: "minus")
-                        }
-                        .disabled(selectedFavoriteID == nil)
-                        .help("Delete the selected favorite")
+                HStack(spacing: 4) {
+                    Button {
+                        add()
+                    } label: {
+                        Image(systemName: "plus")
                     }
+                    .help("Add a new favorite")
+                    Button {
+                        delete()
+                    } label: {
+                        Image(systemName: "minus")
+                    }
+                    .disabled(selectedFavoriteID == nil)
+                    .help("Delete the selected favorite")
                     Spacer()
-                    Button("Refresh Thumbnails") { refreshAllThumbnails() }
+                    Button("Import…") { importFavorites() }
+                        .help("Merge favorites from a JSON file")
+                    Button("Export…") { exportFavorites() }
                         .disabled(favorites.items.isEmpty)
-                        .help("Fetch the latest artwork for every favorite. Custom thumbnails are kept.")
-                    Spacer()
-                    VStack(spacing: 4) {
-                        Button("Import…") { importFavorites() }
-                            .help("Merge favorites from a JSON file")
-                        Button("Export…") { exportFavorites() }
-                            .disabled(favorites.items.isEmpty)
-                            .help("Save your favorites to a JSON file")
-                    }
-                    .frame(width: 96)
+                        .help("Save your favorites to a JSON file")
                 }
                 .controlSize(.small)
                 .padding(6)
@@ -97,8 +87,6 @@ struct FavoritesPreferences: View {
             }
             .frame(minWidth: 240)
         }
-        .onAppear { applyRouterSelection() }
-        .onChange(of: router.selectedFavoriteID) { _ in applyRouterSelection() }
         .onDrop(of: [UTType.fileURL], isTargeted: nil, perform: importDroppedFile)
         .alert("Favorites", isPresented: messageShown) {
             Button("OK") { message = nil }
@@ -109,13 +97,6 @@ struct FavoritesPreferences: View {
 
     private var messageShown: Binding<Bool> {
         Binding(get: { message != nil }, set: { if !$0 { message = nil } })
-    }
-
-    /// Selects the favorite the router asked for ("Show in Settings"), then clears the request.
-    private func applyRouterSelection() {
-        guard let id = router.selectedFavoriteID else { return }
-        selectedFavoriteID = id
-        router.selectedFavoriteID = nil
     }
 
     private func add() {
@@ -190,64 +171,31 @@ struct FavoritesPreferences: View {
         }
         do {
             let incoming = try FavoritesIO.decode(try Data(contentsOf: url))
-            // Conflicts are settled before anything is written, so Cancel leaves the list untouched.
-            let plan = FavoritesIO.plan(incoming, against: favorites.items)
-            let strategy: FavoritesIO.ConflictStrategy
-            if plan.conflicts.isEmpty {
-                strategy = .createDuplicates
-            } else {
-                guard let chosen = Self.conflictStrategy(for: plan.conflicts.count) else { return }
-                strategy = chosen
-            }
-            let before = Set(favorites.items.map(\.id))
-            favorites.items = FavoritesIO.apply(plan, to: favorites.items, strategy: strategy)
-            let added = favorites.items.filter { !before.contains($0.id) }
-            refreshThumbnails(for: added)
-            message =
-                added.isEmpty
-                ? "No new favorites to import." : "Imported \(added.count) favorite(s)."
+            let existingURLs = Set(favorites.items.map(\.url))
+            let result = FavoritesIO.merge(incoming, into: favorites.items)
+            favorites.items = result.items
+            loadThumbnails(for: result.items.filter { !existingURLs.contains($0.url) })
+            message = result.added > 0 ? "Imported \(result.added) favorite(s)." : "No new favorites to import."
         } catch {
             message = "Import failed: \(error.localizedDescription)"
         }
     }
 
-    /// Asks how to resolve name conflicts. Nil when the user cancels.
-    private static func conflictStrategy(for count: Int) -> FavoritesIO.ConflictStrategy? {
-        let choice = Alerts.choose(
-            title: "Some favorites already exist",
-            message:
-                "\(count) favorite(s) in the file have the same name as one in your list. Create duplicates adds numbered copies, Overwrite replaces the existing favorite, and Ignore skips the conflicting ones.",
-            buttons: ["Create Duplicates", "Overwrite", "Ignore", "Cancel"],
-            destructive: [1])
-        switch choice {
-        case 0: return .createDuplicates
-        case 1: return .overwrite
-        case 2: return .ignore
-        default: return nil
-        }
-    }
-
-    private func refreshAllThumbnails() {
-        refreshThumbnails(for: favorites.items)
-    }
-
-    /// Fetches artwork for each distinct URL in `targets` (in parallel) and stores it on
-    /// the favorites that use it. Favorites with a custom thumbnail are skipped by the store.
-    private func refreshThumbnails(for targets: [Favorite]) {
-        let urls = Set(targets.map(\.url))
-        guard !urls.isEmpty else { return }
+    private func loadThumbnails(for importedFavorites: [Favorite]) {
+        guard !importedFavorites.isEmpty else { return }
 
         Task { @MainActor in
             await withTaskGroup(of: (String, Data?).self) { group in
-                for url in urls {
+                for favorite in importedFavorites {
                     group.addTask {
-                        (url, await StreamResolver.thumbnail(for: url))
+                        let thumbnail = await StreamResolver.thumbnail(for: favorite.url)
+                        return (favorite.url, thumbnail)
                     }
                 }
 
                 for await (url, thumbnail) in group {
-                    if let thumbnail, let key = ThumbnailCache.store(thumbnail) {
-                        favorites.setThumbnailKey(key, for: url)
+                    if let thumbnail {
+                        favorites.setThumbnail(thumbnail, for: url)
                     }
                 }
             }

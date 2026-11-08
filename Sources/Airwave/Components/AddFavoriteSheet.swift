@@ -3,45 +3,37 @@ import SwiftUI
 struct AddFavoriteSheet: View {
     @EnvironmentObject var favorites: FavoritesStore
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var player: AudioPlayer
     @State var name: String
-    /// Identity the saved favorite takes, so it matches the playing track and its recent entry.
-    let trackID: UUID
     let url: String
-    let thumbnailKey: String?
+    let thumbnail: Data?
 
-    init(trackID: UUID, initialName: String, url: String, thumbnailKey: String?) {
-        self.trackID = trackID
+    init(initialName: String, url: String, thumbnail: Data?) {
         _name = State(initialValue: initialName)
         self.url = url
-        self.thumbnailKey = thumbnailKey
+        self.thumbnail = thumbnail
     }
 
-    private var isNameTaken: Bool { !favorites.isNameAvailable(name) }
+    /// The URL is already saved, so `FavoritesStore.add` would silently no-op.
+    private var isDuplicate: Bool { favorites.contains(url: url) }
 
     var body: some View {
         VStack(spacing: 8) {
-            Thumbnail(key: thumbnailKey, size: 64)
+            Thumbnail(data: thumbnail, size: 64)
             TextField("Name", text: $name).textFieldStyle(.roundedBorder)
             Text(url).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-            if isNameTaken {
-                Label("A favorite with this name already exists", systemImage: "exclamationmark.triangle")
+            if isDuplicate {
+                Label("Already in Favorites", systemImage: "star.fill")
                     .font(.caption2)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.secondary)
             }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Save") {
-                    if favorites.add(name: name, url: url, thumbnailKey: thumbnailKey, id: trackID),
-                        let saved = favorites.favorite(id: trackID)
-                    {
-                        player.adoptFavorite(saved)
-                    }
-                    dismiss()
+                    favorites.add(name: name, url: url, thumbnail: thumbnail); dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(isNameTaken)
+                .disabled(isDuplicate)
             }
         }
         .padding(12)

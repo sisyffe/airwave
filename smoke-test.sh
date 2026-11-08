@@ -27,7 +27,6 @@ swiftc -swift-version 5 \
   Tests/Smoke/main.swift \
   Sources/Airwave/Services/Prefs.swift \
   Sources/Airwave/Services/Favorites.swift \
-  Sources/Airwave/Services/PlaybackRequest.swift \
   Sources/Airwave/Services/FavoritesIO.swift \
   Sources/Airwave/Services/Recents.swift \
   Sources/Airwave/Services/ThumbnailCache.swift \
@@ -37,7 +36,6 @@ swiftc -swift-version 5 \
   Sources/Airwave/Utilities/UserDefaultsJSON.swift \
   Sources/Airwave/Utilities/NSImage+Downsizing.swift \
   Sources/Airwave/Utilities/AppInfo.swift \
-  Sources/Airwave/Utilities/StreamProbe.swift \
   -o "$TMP/smoke"
 "$TMP/smoke"
 

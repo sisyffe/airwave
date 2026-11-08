@@ -9,7 +9,6 @@ struct AirwaveApp: App {
     @StateObject private var recents = RecentsStore.shared
     @AppStorage(Prefs.hotstart) private var hotstart = true
     @AppStorage(Prefs.lastURL) private var lastURL = ""
-    @AppStorage(Prefs.lastTrackID) private var lastTrackID = ""
 
     init() {
         // Needed when launched via `swift run` (no bundle Info.plist).
@@ -24,15 +23,12 @@ struct AirwaveApp: App {
                 .environmentObject(recents)
                 .frame(minWidth: 240, idealWidth: 260, minHeight: 380, idealHeight: 460)
                 .onReceive(NotificationCenter.default.publisher(for: .airwaveArtwork)) { notification in
-                    if let url = notification.object as? String, let key = notification.userInfo?["key"] as? String {
-                        favorites.setThumbnailKey(key, for: url)
-                        recents.setThumbnailKey(key, for: url)
+                    if let url = notification.object as? String, let data = notification.userInfo?["data"] as? Data {
+                        favorites.setThumbnail(data, for: url)
+                        recents.setThumbnail(data, for: url)
                     }
                 }
-                .task {
-                    ThumbnailCache.prune(keeping: favorites.thumbnailKeys.union(recents.thumbnailKeys))
-                    runHotstart()
-                }
+                .task { runHotstart() }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 260, height: 460)
@@ -41,50 +37,7 @@ struct AirwaveApp: App {
             CommandGroup(replacing: .appInfo) {
                 Button("About Airwave") { appDelegate.showAbout() }
             }
-            // ⌘C and ⌘V act on the playing link, unless a text field is being edited.
-            CommandGroup(replacing: .pasteboard) {
-                Button("Cut") { TextEditing.send(#selector(NSText.cut(_:))) }
-                    .keyboardShortcut("x", modifiers: .command)
-                Button("Copy") {
-                    if TextEditing.isEditingText {
-                        TextEditing.send(#selector(NSText.copy(_:)))
-                    } else {
-                        PlaybackActions.copyPlayingLink()
-                    }
-                }
-                .keyboardShortcut("c", modifiers: .command)
-                Button("Paste") {
-                    if TextEditing.isEditingText {
-                        TextEditing.send(#selector(NSText.paste(_:)))
-                    } else {
-                        NotificationCenter.default.post(name: .airwavePasteLink, object: nil)
-                    }
-                }
-                .keyboardShortcut("v", modifiers: .command)
-                Button("Select All") { TextEditing.send(#selector(NSText.selectAll(_:))) }
-                    .keyboardShortcut("a", modifiers: .command)
-            }
             CommandMenu("Playback") {
-                Button("Toggle Favorite") { PlaybackActions.toggleFavorite() }
-                    .keyboardShortcut("f", modifiers: .command)
-                    .disabled(AudioPlayer.shared.sourceURL.isEmpty)
-                // ⌘↑ / ⌘↓ move the caret to the start/end of a text field, and otherwise change volume.
-                Button("Volume Up") {
-                    if TextEditing.isEditingText {
-                        TextEditing.send(#selector(NSResponder.moveToBeginningOfDocument(_:)))
-                    } else {
-                        PlaybackActions.changeVolume(by: PlaybackActions.volumeStep)
-                    }
-                }
-                .keyboardShortcut(.upArrow, modifiers: .command)
-                Button("Volume Down") {
-                    if TextEditing.isEditingText {
-                        TextEditing.send(#selector(NSResponder.moveToEndOfDocument(_:)))
-                    } else {
-                        PlaybackActions.changeVolume(by: -PlaybackActions.volumeStep)
-                    }
-                }
-                .keyboardShortcut(.downArrow, modifiers: .command)
                 Button(player.isPlaying ? "Pause" : "Play") { player.toggle() }
                     .keyboardShortcut(.space, modifiers: [])
                 Button("Stop") { player.stop() }
@@ -119,10 +72,12 @@ struct AirwaveApp: App {
 
     private func runHotstart() {
         guard hotstart, !AudioPlayer.shared.hasStarted, !lastURL.isEmpty else { return }
-        let trackID = UUID(uuidString: lastTrackID) ?? UUID()
-        let request = PlaybackRequest.known(
-            trackID: trackID, url: lastURL, favorites: FavoritesStore.shared.items, recents: RecentsStore.shared.items)
-        Task { await AudioPlayer.shared.play(request) }
+        let favorite = favorites.favorite(for: lastURL)
+        Task {
+            await AudioPlayer.shared.play(
+                urlString: lastURL, title: favorite?.name, artwork: favorite?.thumbnail,
+                customArtwork: favorite?.hasCustomThumbnail == true)
+        }
     }
 }
 
@@ -156,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let item = NSMenuItem(
                     title: "\(index + 1). \(track.name)", action: #selector(dockPlayRecent(_:)), keyEquivalent: "")
                 item.target = self
-                item.representedObject = track.id
+                item.representedObject = track.url
                 item.toolTip = track.url
                 recentsMenu.addItem(item)
             }
@@ -178,13 +133,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func dockPlayRecent(_ sender: NSMenuItem) {
-        guard let trackID = sender.representedObject as? UUID else { return }
+        guard let url = sender.representedObject as? String else { return }
+        let title = sender.title
         Task { @MainActor in
-            let recents = RecentsStore.shared.items
-            guard let track = recents.first(where: { $0.id == trackID }) else { return }
-            let request = PlaybackRequest.known(
-                trackID: track.id, url: track.url, favorites: FavoritesStore.shared.items, recents: recents)
-            await AudioPlayer.shared.play(request)
+            let isCustom = RecentsStore.shared.items.first { $0.url == url }?.hasCustomThumbnail == true
+            await AudioPlayer.shared.play(urlString: url, title: title, customArtwork: isCustom)
         }
     }
 

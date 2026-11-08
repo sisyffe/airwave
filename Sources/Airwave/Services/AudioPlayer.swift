@@ -14,16 +14,12 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var state: State = .idle
     @Published private(set) var title: String = ""
     @Published private(set) var sourceURL: String = ""
-    /// Identity of the playing track (shared with its favorite or recent entry).
-    @Published private(set) var trackID: UUID?
-    /// Key of the current track's thumbnail in `ThumbnailCache`, if one is known.
-    @Published private(set) var artworkKey: String?
+    /// Thumbnail of the current link (PNG/JPEG data), if one could be fetched.
+    @Published private(set) var artwork: Data?
     /// Current song reported by ICY metadata for direct radio streams (nil = none).
     @Published private(set) var streamTitle: String?
     /// Last playback error, shown as an alert by the UI (nil = none).
     @Published private(set) var lastError: String?
-    /// The request whose load failed, so the UI can offer actions on its favorite.
-    @Published private(set) var failedRequest: PlaybackRequest?
     /// Whether the current item has no known end (live stream / endless radio).
     @Published private(set) var isLive = true
     @Published var volume: Float {
@@ -49,8 +45,6 @@ final class AudioPlayer: ObservableObject {
     private var trimEndObserver: Any?
     /// Fires when the current finite item reaches its end, to replay or stop it.
     private var endOfTrackObserver: NSObjectProtocol?
-    /// Watches a slow load and restarts it; see `scheduleSlowLoadRetry`.
-    private var slowLoadTask: Task<Void, Never>?
     /// ICY metadata reader task for the current direct stream, if any.
     private var icyTask: Task<Void, Never>?
     /// Guards async playback work; stale work is dropped if the token is no
@@ -75,10 +69,9 @@ final class AudioPlayer: ObservableObject {
     /// What was playing before a new link was submitted, so it can be restored
     /// when the new link fails to load.
     private struct Snapshot {
-        let trackID: UUID?
         let url: String
         let title: String
-        let artworkKey: String?
+        let artwork: Data?
         let artworkIsCustom: Bool
         let item: AVPlayerItem?
         let wasPlaying: Bool
@@ -86,55 +79,37 @@ final class AudioPlayer: ObservableObject {
         let trimEndOffset: TimeInterval?
     }
 
-    /// Automatic retries after a slow load, before giving up on the load.
-    static let maxSlowLoadRetries = 2
-
-    func play(_ request: PlaybackRequest, retry: Int = 0) async {
+    func play(urlString: String, title: String? = nil, artwork knownArtwork: Data? = nil, customArtwork: Bool = false) async {
         hasStarted = true
         lastError = nil
-        failedRequest = nil
         let playGeneration = generation.begin()
-        slowLoadTask?.cancel()
-        slowLoadTask = nil
         let previous = Snapshot(
-            trackID: trackID, url: sourceURL, title: self.title, artworkKey: artworkKey, artworkIsCustom: artworkIsCustom,
+            url: sourceURL, title: self.title, artwork: artwork, artworkIsCustom: artworkIsCustom,
             item: player.currentItem, wasPlaying: isPlaying, trimStartOffset: trimStartOffset,
             trimEndOffset: trimEndOffset)
-        artworkIsCustom = request.customArtwork
-        trimStartOffset = request.startOffset
-        trimEndOffset = request.endOffset
+        artworkIsCustom = customArtwork
+        // A favorite may define a trim range; it applies wherever the URL plays.
+        let favorite = FavoritesStore.shared.favorite(for: urlString)
+        trimStartOffset = favorite?.startOffset
+        trimEndOffset = favorite?.endOffset
         trimApplied = false
         removeTrimEndObserver()
-        beginLoading(request)
-        scheduleSlowLoadRetry(request, retry: retry, playGeneration: playGeneration)
+        beginLoading(urlString: urlString, title: title, artwork: knownArtwork)
         do {
-            let resolved = try await StreamResolver.resolve(request.url)
+            let resolved = try await StreamResolver.resolve(urlString)
             guard generation.isCurrent(playGeneration) else { return }  // user switched or stopped
-            if request.name == nil, let resolvedTitle = resolved.title { self.title = resolvedTitle }
-            start(resolved, request: request, previous: previous, playGeneration: playGeneration)
-            await refreshArtwork(resolved, page: request.url, playGeneration: playGeneration)
+            if title == nil, let resolvedTitle = resolved.title { self.title = resolvedTitle }
+            start(resolved, urlString: urlString, previous: previous, playGeneration: playGeneration)
+            await refreshArtwork(resolved, page: urlString, playGeneration: playGeneration)
         } catch {
             guard generation.isCurrent(playGeneration) else { return }  // a newer link owns the UI
             restore(previous)  // keep whatever was playing…
             lastError = error.localizedDescription  // …and surface the problem as an alert
-            failedRequest = request
         }
     }
 
-    /// Retries a load that has not started playing within the user's threshold, up to
-    /// `maxSlowLoadRetries` times. A newer play or a stop invalidates the watchdog.
-    private func scheduleSlowLoadRetry(_ request: PlaybackRequest, retry: Int, playGeneration: Int) {
-        guard let threshold = Prefs.autoRefreshThreshold(), retry < Self.maxSlowLoadRetries else { return }
-        slowLoadTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(threshold * 1_000_000_000))
-            guard !Task.isCancelled, let self, self.generation.isCurrent(playGeneration), self.state == .loading
-            else { return }
-            await self.play(request, retry: retry + 1)
-        }
-    }
-
-    /// Resets published state for a new track before its stream is resolved.
-    private func beginLoading(_ request: PlaybackRequest) {
+    /// Resets published state for a new link before its stream is resolved.
+    private func beginLoading(urlString: String, title: String?, artwork knownArtwork: Data?) {
         state = .loading
         streamTitle = nil
         isLive = true
@@ -142,41 +117,29 @@ final class AudioPlayer: ObservableObject {
         icyTask = nil
         removeEndOfTrackObserver()
         removeDurationObserver()
-        trackID = request.trackID
-        sourceURL = request.url
-        title = request.name ?? request.url
-        artworkKey = request.artworkKey
+        sourceURL = urlString
+        self.title = title ?? urlString
+        artwork = knownArtwork
         updateNowPlaying()
     }
 
     /// Swaps in the resolved stream, starts playback and wires up failure handling.
-    private func start(_ resolved: StreamResolver.Resolved, request: PlaybackRequest, previous: Snapshot, playGeneration: Int) {
+    private func start(_ resolved: StreamResolver.Resolved, urlString: String, previous: Snapshot, playGeneration: Int) {
         let item = makePlayerItem(for: resolved)
         statusObservation = item.observe(\.status) { [weak self] item, _ in
             Task { @MainActor in
                 guard let self, item.status == .failed, self.generation.isCurrent(playGeneration) else { return }
-                self.itemFailed(item, request: request, previous: previous)
+                self.itemFailed(item, previous: previous)
             }
         }
         observeEndOfTrack(of: item)
         player.replaceCurrentItem(with: item)
         observeDuration(of: item)
         player.play()
-        UserDefaults.standard.set(request.url, forKey: Prefs.lastURL)
-        UserDefaults.standard.set(request.trackID.uuidString, forKey: Prefs.lastTrackID)
-        RecentsStore.shared.record(
-            trackID: request.trackID, name: self.title, url: request.url, thumbnailKey: artworkKey,
-            custom: artworkIsCustom)
+        UserDefaults.standard.set(urlString, forKey: Prefs.lastURL)
+        RecentsStore.shared.record(name: self.title, url: urlString, thumbnail: artwork, custom: artworkIsCustom)
         updateNowPlaying()
         startICYIfEligible(resolved, playGeneration: playGeneration)
-    }
-
-    /// Makes a newly saved favorite the identity of the playing track, so the
-    /// favorite and its recent entry share an ID and the star updates at once.
-    func adoptFavorite(_ favorite: Favorite) {
-        guard favorite.url == sourceURL else { return }
-        trackID = favorite.id
-        UserDefaults.standard.set(favorite.id.uuidString, forKey: Prefs.lastTrackID)
     }
 
     private func makePlayerItem(for resolved: StreamResolver.Resolved) -> AVPlayerItem {
@@ -190,34 +153,31 @@ final class AudioPlayer: ObservableObject {
     /// favorites/recents), so covers stay up to date on every play.
     private func refreshArtwork(_ resolved: StreamResolver.Resolved, page: String, playGeneration: Int) async {
         guard !artworkIsCustom else { return }  // keep the user's cover
-        guard let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: page),
-            generation.isCurrent(playGeneration)
-        else { return }
-        guard let key = ThumbnailCache.store(fetched), key != artworkKey else { return }
-        artworkKey = key
-        updateNowPlaying()
-        NotificationCenter.default.post(name: .airwaveArtwork, object: page, userInfo: ["key": key])
+        let fetched = await StreamResolver.fetchThumbnail(resolved.thumbnailURL, page: page)
+        if generation.isCurrent(playGeneration), let fetched, fetched != artwork {
+            artwork = fetched
+            updateNowPlaying()
+            NotificationCenter.default.post(name: .airwaveArtwork, object: page, userInfo: ["data": fetched])
+        }
     }
 
     /// Replaces the artwork of the currently playing track (used when a custom
     /// thumbnail is set or reset from Settings). No-op for other URLs.
-    func applyArtwork(key: String?, for url: String, custom: Bool) {
+    func applyArtwork(_ data: Data?, for url: String, custom: Bool) {
         guard url == sourceURL else { return }
-        artworkKey = key
+        artwork = data
         artworkIsCustom = custom
         updateNowPlaying()
     }
 
     /// The item we just swapped in never actually started; put back what was playing before.
-    private func itemFailed(_ item: AVPlayerItem, request: PlaybackRequest, previous: Snapshot) {
+    private func itemFailed(_ item: AVPlayerItem, previous: Snapshot) {
         let message = item.error?.localizedDescription ?? "Playback failed"
         if case .loading = state { restore(previous) }
         lastError = message
-        failedRequest = request
     }
 
     private func restore(_ snapshot: Snapshot) {
-        trackID = snapshot.trackID
         removeEndOfTrackObserver()
         removeDurationObserver()
         // Restore trim before the duration observer runs, so it re-applies for
@@ -241,7 +201,7 @@ final class AudioPlayer: ObservableObject {
         }
         if snapshot.wasPlaying, snapshot.item != nil { player.play() }
         title = snapshot.title
-        artworkKey = snapshot.artworkKey
+        artwork = snapshot.artwork
         artworkIsCustom = snapshot.artworkIsCustom
         isLive = snapshot.item?.duration.isIndefinite ?? true
         state = snapshot.item == nil ? .idle : (snapshot.wasPlaying ? .playing : .paused)
@@ -344,7 +304,9 @@ final class AudioPlayer: ObservableObject {
 
     func resume() {
         guard player.currentItem != nil else {
-            if !sourceURL.isEmpty { refresh() }
+            if !sourceURL.isEmpty {
+                Task { await play(urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom) }
+            }
             return
         }
         // For live streams, jump back to the live edge after a pause.
@@ -373,19 +335,14 @@ final class AudioPlayer: ObservableObject {
     /// Re-resolve and reload the current source (fresh stream URL), keeping the
     /// existing title and artwork so the UI does not flicker.
     func refresh() {
-        guard let trackID, !sourceURL.isEmpty else { return }
-        let request = PlaybackRequest(
-            trackID: trackID, url: sourceURL, name: title, artworkKey: artworkKey, customArtwork: artworkIsCustom,
-            startOffset: trimStartOffset, endOffset: trimEndOffset)
-        Task { await play(request) }
+        guard !sourceURL.isEmpty else { return }
+        Task { await play(urlString: sourceURL, title: title, artwork: artwork, customArtwork: artworkIsCustom) }
     }
 
     func stop() {
         // Invalidate in-flight work so a stream still resolving (or artwork still
         // downloading) cannot start playback or paint artwork after the stop.
         generation.invalidate()
-        slowLoadTask?.cancel()
-        slowLoadTask = nil
         removeEndOfTrackObserver()
         removeDurationObserver()
         removeTrimEndObserver()
@@ -399,14 +356,12 @@ final class AudioPlayer: ObservableObject {
         streamTitle = nil
         isLive = true
         artworkIsCustom = false
-        trackID = nil
         sourceURL = ""
         title = ""
-        artworkKey = nil
+        artwork = nil
         state = .idle
         // Forget the resume URL so hotstart does not restart a stopped stream.
         UserDefaults.standard.removeObject(forKey: Prefs.lastURL)
-        UserDefaults.standard.removeObject(forKey: Prefs.lastTrackID)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
     }
@@ -419,11 +374,9 @@ final class AudioPlayer: ObservableObject {
         icyTask = Task { [weak self] in
             for await info in ICYMetadata.stream(from: url) {
                 guard let self, self.generation.isCurrent(playGeneration) else { return }
-                if let station = info.station, self.title == self.sourceURL, let trackID = self.trackID {
+                if let station = info.station, self.title == self.sourceURL {
                     self.title = station
-                    RecentsStore.shared.record(
-                        trackID: trackID, name: station, url: self.sourceURL, thumbnailKey: self.artworkKey,
-                        custom: self.artworkIsCustom)
+                    RecentsStore.shared.record(name: station, url: self.sourceURL, thumbnail: self.artwork, custom: self.artworkIsCustom)
                 }
                 self.streamTitle = info.song
                 self.updateNowPlaying()
@@ -431,17 +384,11 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    func clearError() {
-        lastError = nil
-        failedRequest = nil
-    }
+    func clearError() { lastError = nil }
 
     private func syncState(_ status: AVPlayer.TimeControlStatus) {
         switch status {
-        case .playing:
-            state = .playing
-            slowLoadTask?.cancel()
-            slowLoadTask = nil
+        case .playing: state = .playing
         case .waitingToPlayAtSpecifiedRate: state = .loading
         case .paused: if player.currentItem != nil && state != .loading { state = .paused }
         @unknown default: break
@@ -479,7 +426,7 @@ final class AudioPlayer: ObservableObject {
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
             MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
         ]
-        if let image = ThumbnailCache.image(for: artworkKey) {
+        if let artwork, let image = NSImage(data: artwork) {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         } else if let icon = NSApp?.applicationIconImage {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: icon.size) { _ in icon }
@@ -490,6 +437,6 @@ final class AudioPlayer: ObservableObject {
 }
 
 extension Notification.Name {
-    /// Posted when a thumbnail is fetched for a URL (object: url String, userInfo["key"]: ThumbnailCache key).
+    /// Posted when a thumbnail is fetched for a URL (object: url String, userInfo["data"]: Data).
     static let airwaveArtwork = Notification.Name("airwaveArtwork")
 }

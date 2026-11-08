@@ -23,7 +23,6 @@ struct PlaybackOptionsPopover: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 6) {
-            linkRow
             Text("Controls").font(.caption).foregroundStyle(.secondary)
             HStack(spacing: 12) {
                 skipButton(
@@ -45,32 +44,6 @@ struct PlaybackOptionsPopover: View {
             }
         }
         .disabled(player.isLive)
-    }
-
-    /// The playing link, on one truncated line, with a copy button on its left.
-    /// Neither takes focus when the popover opens.
-    @ViewBuilder private var linkRow: some View {
-        if !player.sourceURL.isEmpty {
-            HStack(spacing: 6) {
-                Button {
-                    Clipboard.copy(player.sourceURL)
-                } label: {
-                    Label("Copy link", systemImage: "doc.on.doc")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.borderless)
-                .focusable(false)
-                .help("Copy link")
-                Text(player.sourceURL)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .focusable(false)
-                    .help(player.sourceURL)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 
     private func skipButton(by seconds: TimeInterval, symbol: String, size: CGFloat, help: String) -> some View {

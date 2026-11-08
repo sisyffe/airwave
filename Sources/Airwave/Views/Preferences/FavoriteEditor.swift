@@ -9,10 +9,6 @@ struct FavoriteEditor: View {
     @EnvironmentObject var recents: RecentsStore
 
     @State private var showImporter = false
-    /// The name being typed. It is committed on submit or focus loss, once it is unique.
-    @State private var draftName = ""
-    @State private var nameWarning: String?
-    @FocusState private var isNameFocused: Bool
     @State private var message: String?
     @State private var isDropTargeted = false
 
@@ -28,19 +24,7 @@ struct FavoriteEditor: View {
         Form {
             Section {
                 thumbnailSection
-                TextField("Name", text: $draftName)
-                    .focused($isNameFocused)
-                    .onSubmit(commitName)
-                    .onChange(of: isNameFocused) { focused in
-                        if !focused { commitName() }
-                    }
-                    .onChange(of: favorite.id) { _ in draftName = favorite.name }
-                    .task { draftName = favorite.name }
-                if let nameWarning {
-                    Label(nameWarning, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
+                TextField("Name", text: $favorite.name)
                 TextField("Link", text: $favorite.url)
                     .help("YouTube URL or direct audio/HLS stream URL")
                 if !favorite.url.isEmpty && !looksPlayable {
@@ -51,7 +35,11 @@ struct FavoriteEditor: View {
                 HStack {
                     Spacer()
                     Button {
-                        Task { await player.play(PlaybackRequest(favorite: favorite)) }
+                        Task {
+                            await player.play(
+                                urlString: favorite.url, title: favorite.name, artwork: favorite.thumbnail,
+                                customArtwork: favorite.hasCustomThumbnail == true)
+                        }
                     } label: {
                         Label("Play", systemImage: "play.fill")
                     }
@@ -85,36 +73,21 @@ struct FavoriteEditor: View {
 
     private var thumbnailSection: some View {
         VStack(spacing: 6) {
-            Thumbnail(key: favorite.thumbnailKey, size: Self.thumbnailSize)
+            Thumbnail(data: favorite.thumbnail, size: Self.thumbnailSize)
                 .overlay {
                     RoundedRectangle(cornerRadius: Self.thumbnailSize * Self.cornerRadiusScale)
                         .strokeBorder(isDropTargeted ? Color.accentColor : .clear, lineWidth: 2)
                 }
                 .onDrop(of: [UTType.image], isTargeted: $isDropTargeted, perform: handleDrop)
             HStack(spacing: 6) {
-                Text("Custom thumbnail:").font(.caption).foregroundStyle(.secondary)
-                Button {
-                    pasteThumbnail()
-                } label: {
-                    Label("Import", systemImage: "doc.on.clipboard")
-                }
-                .help("Use the image on the clipboard")
-                Button {
-                    showImporter = true
-                } label: {
-                    Label("Import", systemImage: "folder")
-                }
-                .help("Choose an image file")
-                if favorite.hasCustomThumbnail == true {
-                    Button(role: .destructive) {
-                        resetThumbnail()
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .help("Delete the custom thumbnail and fetch the automatic one")
-                }
+                Button("Paste Image") { pasteThumbnail() }
+                Button("Choose Image…") { showImporter = true }
             }
             .controlSize(.small)
+            if favorite.hasCustomThumbnail == true {
+                Button("Reset to default") { resetThumbnail() }
+                    .controlSize(.small)
+            }
             if let message {
                 Text(message).font(.caption2).foregroundStyle(.orange)
             }
@@ -155,24 +128,6 @@ struct FavoriteEditor: View {
     private func setTime(_ time: Binding<TimeInterval?>, minutes: Int, seconds: Int) {
         let total = minutes * 60 + seconds
         time.wrappedValue = total == 0 ? nil : TimeInterval(total)
-    }
-
-    /// Saves the draft name when it is unique; otherwise keeps the last valid name and says why.
-    private func commitName() {
-        let trimmed = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            draftName = favorite.name
-            nameWarning = nil
-            return
-        }
-        guard favorites.isNameAvailable(trimmed, excluding: favorite.id) else {
-            draftName = favorite.name
-            nameWarning = "Another favorite already uses this name."
-            return
-        }
-        nameWarning = nil
-        favorite.name = trimmed
-        draftName = trimmed
     }
 
     private func pasteThumbnail() {
@@ -218,19 +173,19 @@ struct FavoriteEditor: View {
     /// Applies a custom image everywhere the track appears: the favorite, its
     /// recent entry, and the Now Playing card when it is the current track.
     private func applyCustomThumbnail(_ data: Data) {
-        guard let key = favorites.setCustomThumbnail(data, for: favorite.id) else {
+        guard let canonical = favorites.setCustomThumbnail(data, for: favorite.id) else {
             message = "That doesn't look like an image."
             return
         }
         message = nil
-        recents.setCustomThumbnailKey(key, for: favorite.id)
-        player.applyArtwork(key: key, for: favorite.url, custom: true)
+        recents.setCustomThumbnail(canonical, for: favorite.url)
+        player.applyArtwork(canonical, for: favorite.url, custom: true)
     }
 
     private func resetThumbnail() {
         favorites.clearCustomThumbnail(for: favorite.id)
-        recents.clearCustomThumbnail(for: favorite.id)
-        player.applyArtwork(key: nil, for: favorite.url, custom: false)
+        recents.clearCustomThumbnail(for: favorite.url)
+        player.applyArtwork(nil, for: favorite.url, custom: false)
         message = nil
         refetchThumbnail()
     }
@@ -241,10 +196,9 @@ struct FavoriteEditor: View {
         guard !url.isEmpty else { return }
         Task { @MainActor in
             guard let data = await StreamResolver.thumbnail(for: url) else { return }
-            guard let key = ThumbnailCache.store(data) else { return }
-            favorites.setThumbnailKey(key, for: url)
-            recents.setThumbnailKey(key, for: url)
-            player.applyArtwork(key: key, for: url, custom: false)
+            favorites.setThumbnail(data, for: url)
+            recents.setThumbnail(data, for: url)
+            player.applyArtwork(data, for: url, custom: false)
         }
     }
 }

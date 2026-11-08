@@ -3,7 +3,6 @@ import SwiftUI
 struct RecentsList: View {
     @EnvironmentObject var player: AudioPlayer
     @EnvironmentObject var recents: RecentsStore
-    @EnvironmentObject var favorites: FavoritesStore
 
     var body: some View {
         if recents.items.isEmpty {
@@ -17,7 +16,7 @@ struct RecentsList: View {
                     RecentRow(
                         rank: index + 1,
                         track: track,
-                        isCurrent: player.trackID == track.id && player.isPlaying,
+                        isCurrent: player.sourceURL == track.url && player.isPlaying,
                         onPlay: { play(track) },
                         onRemove: { recents.remove(track) })
                 }
@@ -29,7 +28,9 @@ struct RecentsList: View {
 
     private func play(_ track: RecentTrack) {
         Task {
-            await player.play(PlaybackRequest.known(trackID: track.id, url: track.url, favorites: favorites.items, recents: recents.items))
+            await player.play(
+                urlString: track.url, title: track.name, artwork: track.thumbnail,
+                customArtwork: track.hasCustomThumbnail == true)
         }
     }
 }
@@ -48,7 +49,7 @@ private struct RecentRow: View {
                 .foregroundStyle(.tertiary)
                 .monospacedDigit()
                 .frame(width: 12)
-            Thumbnail(key: track.thumbnailKey, size: 24)
+            Thumbnail(data: track.thumbnail, size: 24)
             // Align the row separator with the track name (as in the favorites
             // list) instead of the leading rank number.
             Text(track.name)
