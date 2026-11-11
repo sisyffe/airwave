@@ -13,7 +13,6 @@ struct FavoriteEditor: View {
     @State private var isDropTargeted = false
     @State private var nameDraft = ""
     @State private var urlDraft = ""
-    @State private var nameError: String?
 
     private static let thumbnailSize: CGFloat = 72
     /// Matches `Thumbnail`'s corner radius so the drop highlight aligns.
@@ -21,6 +20,13 @@ struct FavoriteEditor: View {
 
     private var favorite: Track { library.track(favoriteID) ?? Track(name: "", url: "") }
     private var isEditable: Bool { favorite.isFavorite }
+
+    /// Live check while typing, so the warning appears before the user commits.
+    private var isNameTaken: Bool {
+        isEditable && library.isNameTaken(nameDraft, excluding: favoriteID)
+    }
+
+    private var nameTakenMessage: String { "Another favorite already uses this name." }
 
     private var looksPlayable: Bool {
         URLValidation.httpURL(from: urlDraft) != nil
@@ -30,13 +36,17 @@ struct FavoriteEditor: View {
         Form {
             Section {
                 thumbnailSection
-                TextField("Name", text: $nameDraft)
-                    .onSubmit(commitName)
-                    .disabled(!isEditable)
-                if let nameError {
-                    Label(nameError, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                HStack(spacing: 6) {
+                    TextField("Name", text: $nameDraft)
+                        .foregroundStyle(isNameTaken ? Color.orange : Color.primary)
+                        .onSubmit(commitName)
+                        .disabled(!isEditable)
+                    if isNameTaken {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .help(nameTakenMessage)
+                            .accessibilityLabel(nameTakenMessage)
+                    }
                 }
                 TextField("Link", text: $urlDraft)
                     .onSubmit { library.setURL(favoriteID, to: urlDraft) }
@@ -90,15 +100,11 @@ struct FavoriteEditor: View {
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.image], onCompletion: handleImport)
     }
 
+    /// Saves a valid name; a taken name is refused and the draft reverts.
     private func commitName() {
         guard isEditable, nameDraft != favorite.name else { return }
-        if library.renameFavorite(favoriteID, to: nameDraft) {
-            nameError = nil
-            nameDraft = favorite.name
-        } else {
-            nameError = "Another favorite already uses this name."
-            nameDraft = favorite.name
-        }
+        _ = library.renameFavorite(favoriteID, to: nameDraft)
+        nameDraft = favorite.name
     }
 
     private func trimBinding(_ keyPath: WritableKeyPath<Track, TimeInterval?>) -> Binding<TimeInterval?> {

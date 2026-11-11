@@ -43,8 +43,8 @@ final class AudioPlayer: ObservableObject {
     private var trimStartOffset: TimeInterval?
     private var trimEndOffset: TimeInterval?
     private var trimApplied = false
-    /// Boundary observer that fires when playback crosses the trimmed end.
-    private var trimEndObserver: Any?
+    /// Set while a replay seek is in flight, so end signals raised meanwhile are ignored.
+    private var isReplaying = false
     /// Fires when the current finite item reaches its end, to replay or stop it.
     private var endOfTrackObserver: NSObjectProtocol?
     /// ICY metadata reader task for the current direct stream, if any.
@@ -103,7 +103,6 @@ final class AudioPlayer: ObservableObject {
         trimStartOffset = target.startOffset
         trimEndOffset = target.endOffset
         trimApplied = false
-        removeTrimEndObserver()
         beginLoading(target)
         do {
             let resolved = try await StreamResolver.resolve(target.url)
@@ -197,7 +196,7 @@ final class AudioPlayer: ObservableObject {
         trimStartOffset = snapshot.trimStartOffset
         trimEndOffset = snapshot.trimEndOffset
         trimApplied = false
-        removeTrimEndObserver()
+        isReplaying = false
         if let item = snapshot.item, player.currentItem !== item {
             player.replaceCurrentItem(with: item)
             if item.duration.isIndefinite {
@@ -260,31 +259,10 @@ final class AudioPlayer: ObservableObject {
         if let offset = trimEndOffset, offset > 0, duration.isFinite {
             let end = duration - offset
             if end > (trimStartOffset ?? 0) {
+                // AVFoundation stops at this time and posts didPlayToEnd, the only end signal.
                 item.forwardPlaybackEndTime = CMTime(seconds: end, preferredTimescale: 600)
-                installTrimEndObserver(end)
             }
         }
-    }
-
-    private func installTrimEndObserver(_ end: TimeInterval) {
-        removeTrimEndObserver()
-        let time = NSValue(time: CMTime(seconds: end, preferredTimescale: 600))
-        trimEndObserver = player.addBoundaryTimeObserver(forTimes: [time], queue: .main) { [weak self] in
-            Task { @MainActor in self?.trimDidReachEnd() }
-        }
-    }
-
-    private func removeTrimEndObserver() {
-        if let trimEndObserver {
-            player.removeTimeObserver(trimEndObserver)
-            self.trimEndObserver = nil
-        }
-    }
-
-    /// The trimmed end was reached: replay from the trim start or stop.
-    private func trimDidReachEnd() {
-        guard !isLive else { return }
-        trackDidReachEnd()
     }
 
     /// Watches for the end of the current item. Only finite items post this
@@ -307,16 +285,30 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    /// Replays or stops a finished track, per the Playback setting.
+    /// Replays or stops a finished track, per the Playback setting. Signals that
+    /// arrive while a replay is in flight, or before the playhead has reached the
+    /// effective end, are stale and ignored.
     private func trackDidReachEnd() {
-        guard let item = player.currentItem, !item.duration.isIndefinite else { return }
-        if Prefs.shouldReplayOnTrackEnd() {
-            player.seek(to: CMTime(seconds: trimStartOffset ?? 0, preferredTimescale: 600))
-            player.play()
-        } else {
+        guard !isReplaying, let item = player.currentItem, !item.duration.isIndefinite else { return }
+        let effectiveEnd = item.duration.seconds - (trimEndOffset ?? 0)
+        guard player.currentTime().seconds >= effectiveEnd - Self.endTolerance else { return }
+        guard Prefs.shouldReplayOnTrackEnd() else {
             stop()
+            return
+        }
+        isReplaying = true
+        let start = CMTime(seconds: trimStartOffset ?? 0, preferredTimescale: 600)
+        player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.isReplaying = false
+                self.player.play()
+            }
         }
     }
+
+    /// Slack allowed between the playhead and the effective end when accepting an end signal.
+    private static let endTolerance: TimeInterval = 0.5
 
     func resume() {
         guard player.currentItem != nil else {
@@ -359,7 +351,6 @@ final class AudioPlayer: ObservableObject {
         generation.invalidate()
         removeEndOfTrackObserver()
         removeDurationObserver()
-        removeTrimEndObserver()
         trimStartOffset = nil
         trimEndOffset = nil
         trimApplied = false

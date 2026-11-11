@@ -5,6 +5,7 @@ import ServiceManagement
 struct GeneralPreferences: View {
     @AppStorage(Prefs.hotstart) private var hotstart = true
     @AppStorage(Prefs.quitOnLastWindowClosed) private var quitOnLastWindowClosed = Prefs.defaultQuitOnLastWindowClosed
+    @AppStorage(Prefs.rememberWindowPosition) private var rememberWindowPosition = Prefs.defaultRememberWindowPosition
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -15,6 +16,8 @@ struct GeneralPreferences: View {
                 .help(
                     "On: closing the last window quits Airwave. Off: Airwave stays running and audio continues, like a standard macOS app. Use ⌘Q to quit."
                 )
+            Toggle("Remember last window position at launch", isOn: $rememberWindowPosition)
+                .help("Off: Airwave opens at its default size, centered. On: it reopens where you left it.")
             Toggle("Open Airwave at login", isOn: $launchAtLogin)
                 .onChange(of: launchAtLogin) { enabled in
                     do { enabled ? try SMAppService.mainApp.register() : try SMAppService.mainApp.unregister() } catch {

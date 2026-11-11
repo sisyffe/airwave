@@ -89,6 +89,7 @@ struct ContentView: View {
         .onAppear {
             isLinkFocused = true
         }
+        .background(WindowFramePersistence(defaultSize: NSSize(width: 260, height: 460)))
         .sheet(isPresented: $showAddFavorite) {
             if let track = player.track {
                 AddFavoriteSheet(track: track, thumbnail: player.artwork)

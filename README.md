@@ -16,7 +16,7 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
 ## Features
 
 - **Hybrid Stream Playback:** Play direct audio stream URLs (`mp3`, `aac`, `m4a`, `m3u8`, etc.) and extract audio-only or HLS live streams from YouTube links automatically.
-- **Favorites Management:** Save your favorite stations and streams (the same link can be saved several times, each with its own name and trim; names are unique, ignoring case and spaces), rename them inline, remove them from the row's `…` menu, and reorder them by dragging (both in the main window and in Settings). Import and export your list as a JSON file of names, links and trims from Preferences; imports always get new identities, and clashing names get a numeric suffix such as "Jazz 2".
+- **Favorites Management:** Save your favorite stations and streams (the same link can be saved several times, each with its own name and trim; names are unique, ignoring case and spaces). Rename them in **Settings → Favorites**, where a taken name shows a warning icon and is refused; remove them from the row's `…` menu, and reorder them by dragging (both in the main window and in Settings). Import and export your list as a JSON file of names, links and trims from Preferences; imports always get new identities, and clashing names get a numeric suffix such as "Jazz 2".
 - **Custom Thumbnails:** In **Settings → Favorites**, give a favorite your own artwork by pasting an image, importing a file, or dragging one onto the thumbnail. The cover is applied everywhere the track appears — Favorites, Recents and the Now Playing card — and is never replaced by automatic artwork fetching. **Reset to default** clears it and re-fetches the automatic artwork.
 - **One Track Model:** The playing track, each favorite and each recent entry are the same `Track` record with a private identity. Saving the playing track as a favorite keeps its identity, so the star and the recent entry update immediately. Recents are kept per track, so one link played with different trims appears as separate entries, and hotstart remembers the last track, not only its link.
 - **Manual Links:** **Settings → Playback → When a known link is entered manually** chooses between *Play the closest matching favorite* (reuse a favorite, else a recent, with that link, preferring one without trim), *Play the exactly matching favorite* (default; reuse a favorite, else a recent, with that link and no trim) and *Always play as a new track, ignoring favorites* (never reuse anything).
@@ -34,6 +34,7 @@ Airwave lets you listen to live internet radio, direct audio streams, and YouTub
 - **Track Trimming:** In **Settings → Favorites**, set optional **Start offset** (from the start) and **End offset** (counted back from the end) in minutes and seconds for a favorite to trim its track on playback — applied from any entry point (Favorites, Recents, Dock, hotstart). Live streams ignore trim.
 - **End-of-Track Behavior:** Choose in **Settings → Playback** whether a finished track replays from the start (default) or stops. Applies to finite tracks only; live streams never end.
 - **Hotstart:** Optionally resume your last played stream automatically as soon as the app launches. Only a stream that was playing when Airwave closed is resumed — a stopped stream is not restarted.
+- **Window Position:** **Settings → General → Remember last window position at launch** (on by default) reopens the window where you left it, at its last size. Off opens it at the default size, centered. The change applies on the next launch.
 - **Background Playback Mode:** Choose whether closing the main window quits the application or keeps Airwave running silently in the background.
 
 ---
@@ -176,7 +177,7 @@ Sources/Airwave/
 └── Components/                    # Reusable SwiftUI views
     ├── NowPlayingCard.swift       # Playback header with status pill, title/song, transport & volume slider
     ├── PlaybackOptionsPopover.swift  # Top-right dropdown with the seek controls
-    ├── FavoritesList.swift        # Interactive list with inline rename & native drag-to-reorder
+    ├── FavoritesList.swift        # Favorites list with native drag-to-reorder
     ├── RecentsList.swift          # Recently played tracks with quick replay
     ├── TitlebarButtons.swift      # Network indicator + settings gear shown in the title bar
     ├── TitlebarAccessoryInstaller.swift  # AppKit NSTitlebarAccessoryViewController bridge

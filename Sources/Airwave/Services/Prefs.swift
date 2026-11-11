@@ -18,6 +18,10 @@ enum Prefs {
     static let showExtraSeekControls = "showExtraSeekControls"
     static let defaultShowExtraSeekControls = false
     static let manualLinkMode = "manualLinkMode"
+    static let rememberWindowPosition = "rememberWindowPosition"
+    static let defaultRememberWindowPosition = true
+    /// AppKit autosave name for the main window's frame (size and position).
+    static let mainWindowAutosaveName = "AirwaveMainWindow"
 
     static func shouldQuitAfterLastWindowClosed(using defaults: UserDefaults = .standard) -> Bool {
         guard defaults.object(forKey: quitOnLastWindowClosed) != nil else {
@@ -32,6 +36,13 @@ enum Prefs {
             return defaultReplayOnTrackEnd
         }
         return defaults.bool(forKey: replayOnTrackEnd)
+    }
+
+    static func shouldRememberWindowPosition(using defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.object(forKey: rememberWindowPosition) != nil else {
+            return defaultRememberWindowPosition
+        }
+        return defaults.bool(forKey: rememberWindowPosition)
     }
 
     static func manualLinkMode(using defaults: UserDefaults = .standard) -> ManualLinkMode {
