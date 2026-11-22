@@ -132,7 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func showAbout() {
         let credits = NSAttributedString(
             string:
-                "A lightweight macOS audio player for YouTube livestreams and direct audio streams. Save favorites and control playback with macOS media controls.\n\nVibe coded with Lovable and Claude.",
+                "A lightweight macOS audio player for YouTube livestreams and direct audio streams. Save favorites and control playback with macOS media controls.\n\nVibe coded with care thanks to DeepSeek and Claude.",
             attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
         )
         NSApplication.shared.orderFrontStandardAboutPanel(options: [

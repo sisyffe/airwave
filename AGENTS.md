@@ -1,116 +1,62 @@
-# AGENTS.md
+---
+name: swift-app-dev
+description: Develop and maintain a native Swift or SwiftUI app (macOS, iOS or a Swift package) end to end. Covers coding new features, fixing bugs, refactoring, reviewing code and proposing new feature ideas, always starting from the project's own AGENTS.md and README. Use this skill whenever the user works on a Swift app or package, mentions SwiftUI, AppKit, SwiftPM, AGENTS.md, or says things like "add a setting", "fix this crash", "what should we add next", "refactor this view", "swift build fails", even if they do not name the skill.
+---
 
-Guidance for agents working on **Airwave**, a lightweight native macOS audio
-player (SwiftUI, macOS 14+) that plays direct audio/HLS streams and resolves
-YouTube audio via `YouTubeKit`.
+# Swift app development
 
-## Toolchain and constraints
+Work on a native Swift app the way its maintainers would. The project's own documents define what "right" looks like; this skill defines the workflow around them.
 
-- **No Xcode.** The project is a plain Swift package built with the Command Line
-  Tools toolchain. `swift build`, `swift run`, `swift package` and `swift format`
-  are available; **XCTest and Swift Testing are not** (`swift test` fails with
-  `no such module 'XCTest'`). Do not add a `.testTarget`.
-- `swift-tools-version` is 5.9. If you bump it to 6.0, remember that
-  `Package.directoryURL` becomes available but Swift 6 language mode may turn on
-  strict concurrency — pin `swiftLanguageModes` if needed.
-- Do not add dependencies without asking. The only dependency is `YouTubeKit`.
+## Step 0: Ground yourself in the project
 
-## Layout
+1. Read `AGENTS.md` (or `AGENTS-*.md`) first. It is the authority on toolchain, layout, commands and conventions, and it wins over anything in this skill.
+2. Read the README for the intended behaviour, feature list and architecture.
+3. Check `Package.swift` or the project file for the real platform, tools version and dependencies. If documents disagree with each other or with the manifest, tell the user instead of silently choosing.
+4. List the source tree and read the files you will touch plus their direct neighbours. Never edit a file you have not read.
+5. Note what the toolchain can and cannot do (for example no Xcode means no XCTest, no `xcodebuild`) and stay within it.
 
-```
-Sources/Airwave/
-├── AirwaveApp.swift     # @main entry, WindowGroup, menu commands, AppDelegate
-├── Models/              # pure value types (Track, TrackCatalog)
-├── Services/            # stateful services + persistence
-├── Utilities/           # small, dependency-free helpers
-├── Views/               # window + settings screens
-│   └── Preferences/     # one file per settings tab
-└── Components/          # reusable SwiftUI views
-Tests/Smoke/main.swift   # pure-logic smoke checks (run by smoke-test.sh)
-Plugins/BundleApp/       # `swift package bundle` command plugin
-```
+## Workflows
 
-Organize **by layer**, one clear responsibility per file. Every track (playing,
-favorite, recent) is one `Track` struct held in `TrackLibrary`; favorites and
-recents are ordered id lists in `TrackCatalog`. Do not reintroduce per-list
-copies of track data.
+### Adding a feature
+1. Restate the behaviour in a sentence or two, including edge cases (empty state, persistence across launches, error paths). Ask the user only when a decision materially changes the design.
+2. Find the existing code closest to the feature and decide where it fits. Tell the user briefly which files will change and whether a new file is really needed.
+3. Implement bottom-up: model and logic, then services, then UI. Keep logic free of UI and platform frameworks where possible so it can be tested.
+4. Reuse the project's existing mechanisms for persistence, preferences, navigation and styling rather than inventing new ones.
+5. Add or extend tests for new logic using whatever the project provides, and register new files wherever the build or test scripts list them.
+6. Update the docs (README features, layout trees, shortcuts) when behaviour or structure changes.
+7. Verify (see below).
 
-## Commands
+### Fixing a bug
+1. Find the root cause by reading the code path end to end, including async, cancellation and threading, before editing.
+2. Fix it where it originates, not by patching the symptom in the view.
+3. If the bug is in testable logic, add a check that fails before the fix and passes after.
+4. Keep the diff minimal; mention unrelated problems instead of fixing them in the same change.
+5. Report what was wrong, what changed, and what could not be verified.
 
-```bash
-swift build -c release                                   # build
-./smoke-test.sh                                          # build + format lint + logic checks
-swift package --allow-writing-to-package-directory bundle # package dist/Airwave.app
-swift run                                                # run unbundled (About shows version "dev")
-swift format --in-place --recursive Sources              # format
-swift format lint --recursive Sources                    # check formatting
-```
+### Proposing features
+- Ground ideas in the app's purpose and its documented limitations.
+- Give 3 to 5 ideas, each with: a one-line pitch, the user benefit, which existing parts it would extend, rough size (small/medium/large) and risks (new dependency, permissions, distribution, network).
+- Rank them by value over complexity and say which you would do first. Do not implement until the user chooses.
 
-- The bundle command plugin **packages an already-built binary**; run
-  `swift build -c release` first. It needs `--allow-writing-to-package-directory`
-  because it writes `dist/`.
-- Do **not** make the plugin invoke `swift build`: nested SwiftPM invocations
-  deadlock on the package lock, and command plugins are sandboxed so a nested
-  `swift build` also fails. That is why packaging is a separate step.
+### Refactoring and reviewing
+- Look for duplicated data, near-identical views, files with mixed responsibilities, dead code and stale comments.
+- Refactor in behaviour-preserving steps and run the checks between steps.
+- Report review findings grouped as bugs, simplifications, structure and style, most important first.
 
-## Versioning
+## Guidelines worth keeping in mind
 
-`VERSION` at the repo root is the single source of truth. The bundle plugin
-writes it into `Info.plist`; `AppInfo.version` reads it back at runtime from
-`CFBundleShortVersionString` (falling back to `"dev"` when run unbundled). Bump
-only `VERSION` (and the README badge).
+These are tendencies that keep a codebase healthy, not rigid rules. Defer to the project's conventions when they differ.
 
-## Tests
+- **Simplicity:** prefer the smallest change and standard platform APIs; avoid speculative abstractions and new dependencies unless the user agrees.
+- **Structure:** put code where the existing layout says it belongs, one clear responsibility per file, and keep layout docs in sync when files move.
+- **Build on what exists:** extend existing types and flows before creating parallel ones, and keep a single source of truth for each piece of data.
+- **Comments:** let names carry the meaning; comment only to explain why, and never leave commented-out or redundant comments.
+- **Names:** intent-revealing, no abbreviations, magic numbers turned into named constants.
 
-`smoke-test.sh` builds, runs `swift format lint`, then compiles
-`Tests/Smoke/main.swift` together with the Foundation-only sources and runs the
-checks. To cover new pure logic:
+## Verification
 
-1. Add `check(...)` assertions in `Tests/Smoke/main.swift`.
-2. If you use a new source file, add it to the `swiftc` list in `smoke-test.sh`.
+Run the commands the project defines (build, formatter or linter, test or smoke scripts) and fix what they report. If something cannot be run, say so plainly rather than claiming success. Before finishing, re-read your diff for stray debug code, unused code and imports, and outdated docs.
 
-Only logic that does not need AppKit, AVFoundation, or the network can be tested
-here. If you change behaviour that is not covered, note it in the PR/commit.
+## Final report
 
-## Conventions
-
-- Match the existing style; `swift format` (config in `.swift-format`, 4-space
-  indent) is the authority. Run it before committing.
-- Names reveal intent: verbs for functions, nouns for values, booleans read as
-  questions. No abbreviations (`fav`, `gen`, `req`) and no magic numbers —
-  name them as constants.
-- Comments explain **why**, not what. Keep doc comments on public/internal types
-  and non-obvious methods.
-- No comments that restate code, no commented-out code.
-
-## Stability to preserve
-
-- **Favorites JSON format** (`FavoritesIO`): names, links and trims only. No
-  identities, thumbnails or flags; import assigns new identities and suffixes
-  clashing names. Drafts with an empty URL are excluded on export and import.
-- **Identity**: tracks are told apart by `Track.id`, never by link. Several
-  favorites may share a link; favorite names are unique (case/space-insensitive).
-- **UserDefaults keys** live in `Prefs`; don't change their string values.
-- **`StreamResolver.directExtensions`**: only formats `AVPlayer` can actually
-  play. `.pls` is deliberately unsupported (AVPlayer cannot resolve PLS).
-
-## Known behaviour to keep in mind
-
-- Playback async work is guarded by `PlaybackGeneration`. Any new `await` in the
-  playback path must re-check `generation.isCurrent(token)` before touching
-  state, and `stop()` must invalidate the generation.
-- Tracks hold a `thumbnailKey` into `ThumbnailStore` (content-addressed files in
-  Application Support); never store image bytes in the catalog.
-- Trim and custom covers stay on a track after it stops being a favorite but are
-  only editable on favorites (`TrackCatalog` enforces this).
-- `stop()` clears `Prefs.lastTrack` so hotstart does not restart a stopped
-  stream. The track is written in `AudioPlayer.start()`.
-- When a finite item ends, `AudioPlayer` observes
-  `AVPlayerItem.didPlayToEndTimeNotification` and either replays it or stops,
-  per the `Prefs.replayOnTrackEnd` setting (default: replay). Live streams are
-  indefinite and never post that notification.
-
-## Committing
-
-Small, single-purpose commits (`fix:`, `refactor:`, `build:`, `docs:`, `test:`).
-Run `./smoke-test.sh` before committing. Do not commit unless asked.
+Keep it short: what changed per file, why it fits the existing structure, what was verified, and what the user should check by hand (sound, network, window behaviour and anything the checks cannot exercise). Mention doc inconsistencies or follow-up ideas in one line each without acting on them.
